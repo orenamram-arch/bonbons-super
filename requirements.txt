@@ -1,3 +1,5 @@
 streamlit
 pandas
 duckduckgo_search
+requests
+pillow
