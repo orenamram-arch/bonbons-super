@@ -11,7 +11,7 @@ from PIL import Image
 # הגדרת עמוד האפליקציה
 st.set_page_config(page_title="ניהול קניות חכם ומתקדם", page_icon="🛒", layout="centered")
 
-# עיצוב מותאם לעברית (RTL) וויזואליזציה מושלמת לנייד
+# עיצוב מותאם לעברית (RTL) והכרחת עמודות להישאר כטבלה גם בנייד
 st.markdown("""
 <style>
     body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox {
@@ -25,9 +25,27 @@ st.markdown("""
         border-radius: 10px;
         text-align: center;
     }
-    @media (max-width: 640px) {
+    /* תיקון קריטי: מניעת שבירת עמודות והצגתן כטבלה גם במסכי נייד צרים */
+    @media (max-width: 768px) {
+        [data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            flex-wrap: nowrap !important;
+        }
+        [data-testid="column"] {
+            width: auto !important;
+            flex: 1 !important;
+            min-width: 0 !important;
+            padding: 0 1px !important;
+        }
         .stButton>button {
-            width: 100%;
+            padding: 2px 4px !important;
+            font-size: 11px !important;
+            min-height: 0px !important;
+        }
+        .stSelectbox div[data-baseweb="select"] {
+            font-size: 11px !important;
         }
     }
 </style>
@@ -74,7 +92,6 @@ def save_data():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
     
-    # סינכרון ענן אופציונלי אם הוגדר קישור
     if st.session_state.cloud_sync_url:
         try:
             requests.put(st.session_state.cloud_sync_url, json=data, timeout=2)
@@ -146,7 +163,6 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
     
     total_cost = sum(item['quantity'] * item['estimated_price'] for item in st.session_state.shopping_list if not item['checked'])
     
-    # תצוגת מד תקציב
     col1, col2 = st.columns(2)
     with col1:
         st.metric(label="💰 עלות סל נוכחי", value=f"₪{total_cost:.2f}")
@@ -154,7 +170,6 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
         remaining_items = len([i for i in st.session_state.shopping_list if not i['checked']])
         st.metric(label="📦 פריטים שנותרו", value=remaining_items)
 
-    # מד התקדמות תקציבי
     if st.session_state.budget > 0:
         budget_ratio = min(total_cost / st.session_state.budget, 1.0)
         st.write(f"תקציב מוגדר: ₪{st.session_state.budget} | ניצולת תקציב:")
@@ -179,6 +194,7 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
                 if selected_category_filter != "הכל (ללא סינון)" and item['category'] != selected_category_filter:
                     continue
 
+                # תצוגת שורה טבלאית אחידה לנייד ולמחשב
                 with st.container():
                     cols = st.columns([0.4, 1.8, 1.5, 0.9, 1.1, 0.8])
                     
@@ -221,7 +237,7 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
                             save_data()
                             st.rerun()
                     
-                    st.markdown("<hr style='margin:5px 0; border:0; border-top:1px solid #eee;'>", unsafe_allow_html=True)
+                    st.markdown("<hr style='margin:3px 0; border:0; border-top:1px solid #eee;'>", unsafe_allow_html=True)
 
         checked_items = [i for i in st.session_state.shopping_list if i['checked']]
         if checked_items:
@@ -323,7 +339,7 @@ elif menu == "⭐ מוצרים מועדפים מהירים":
                 st.success(f"הפריט {fav['name']} נוסף לרשימה!")
 
 # ----------------------------------------------------
-# 4. סריקת פתק/קבלה (AI OCR Simulation/Parser)
+# 4. סריקת פתק/קבלה (AI)
 # ----------------------------------------------------
 elif menu == "📷 סריקת פתק/קבלה (AI)":
     st.title("📷 סריקת פתק או רשימה ידנית")
@@ -336,7 +352,6 @@ elif menu == "📷 סריקת פתק/קבלה (AI)":
         
         if st.button("🔍 נתח תמונה וחלץ פריטים"):
             with st.spinner("מנתח את התמונה ומזהה מוצרים..."):
-                # סימולציית פענוח חכם מתוך תמונה (ניתן לחבר בעתיד ל-OpenAI API או שירותי OCR)
                 simulated_items = ["גבינה צהובה", "קולה סרו", "שוקולד פרה"]
                 for sim_item in simulated_items:
                     cat, price = auto_categorize_and_price(sim_item)
@@ -356,7 +371,6 @@ elif menu == "📷 סריקת פתק/קבלה (AI)":
 elif menu == "📊 סטטיסטיקות ותקציב":
     st.title("📊 סטטיסטיקות ותקציב קניות")
     
-    # הגדרת תקציב חדש
     new_budget = st.number_input("הגדר תקציב מקסימלי לקנייה (₪):", min_value=0.0, value=float(st.session_state.budget), step=50.0)
     if new_budget != st.session_state.budget:
         st.session_state.budget = new_budget
