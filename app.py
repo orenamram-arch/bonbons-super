@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import re
 import json
 import os
 import requests
@@ -81,61 +80,12 @@ FAVOURITES_DB = [
     {"name": "קוטג'", "category": "מוצרי חלב", "estimated_price": 6.8}
 ]
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {
-        "shopping_list": [
-            {"name": "חלב 3%", "quantity": 2, "category": "מוצרי חלב", "estimated_price": 7.2, "checked": False},
-            {"name": "לחם אחיד", "quantity": 1, "category": "מאפים", "estimated_price": 8.5, "checked": False},
-            {"name": "מלפפונים", "quantity": 1, "category": "ירקות ופירות", "estimated_price": 10.0, "checked": False},
-        ],
-        "next_trip_list": [],
-        "purchase_history": [],
-        "budget": 300.0,
-        "cloud_sync_url": ""
-    }
-
-def save_data():
-    data = {
-        "shopping_list": st.session_state.shopping_list,
-        "next_trip_list": st.session_state.next_trip_list,
-        "purchase_history": st.session_state.purchase_history,
-        "budget": st.session_state.budget,
-        "cloud_sync_url": st.session_state.cloud_sync_url
-    }
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-    
-    if st.session_state.cloud_sync_url:
-        try:
-            requests.put(st.session_state.cloud_sync_url, json=data, timeout=2)
-        except Exception:
-            pass
-
-saved_data = load_data()
-if 'shopping_list' not in st.session_state:
-    st.session_state.shopping_list = saved_data["shopping_list"]
-if 'next_trip_list' not in st.session_state:
-    st.session_state.next_trip_list = saved_data["next_trip_list"]
-if 'purchase_history' not in st.session_state:
-    st.session_state.purchase_history = saved_data["purchase_history"]
-if 'budget' not in st.session_state:
-    st.session_state.budget = saved_data.get("budget", 300.0)
-if 'cloud_sync_url' not in st.session_state:
-    st.session_state.cloud_sync_url = saved_data.get("cloud_sync_url", "")
-
 def smart_ai_categorize_and_price(item_name):
     """הערכת מחיר וסיווג חכמים ומדויקים המבוססים על השוק בישראל"""
     name_lower = item_name.strip().lower()
     
-    # מילון מחירים וקטגוריות מפורט ומדויק לשוק בישראל
     db_prices = {
-        # ירקות ופירות (מחיר לקילו בדרך כלל)
+        # ירקות ופירות (לקילו)
         "מלפפון": ("ירקות ופירות", 10.0), "מלפפונים": ("ירקות ופירות", 10.0),
         "עגבנייה": ("ירקות ופירות", 12.0), "עגבניות": ("ירקות ופירות", 12.0),
         "בצל": ("ירקות ופירות", 6.0), "בצל לבן": ("ירקות ופירות", 6.0),
@@ -194,14 +144,12 @@ def smart_ai_categorize_and_price(item_name):
         "מלח": ("שימורים ויבשים", 3.5),
     }
 
-    # חיפוש מדויק או חלקי במילון
     for key, (cat, price) in db_prices.items():
         if key in name_lower:
             return cat, price
 
-    # אם המוצר לא נמצא במילון, המודל מעריך את הקטגוריה והמחיר בצורה חכמה לפי מילות מפתח כלליות
     category = "שונות"
-    estimated_price = 12.0 # מחיר ברירת מחדל הגיוני למוצר ממוצע בסופר בישראל
+    estimated_price = 12.0
 
     if any(w in name_lower for w in ["פרי", "ירק", "טרי", "קילו"]):
         category = "ירקות ופירות"
@@ -224,6 +172,50 @@ def smart_ai_categorize_and_price(item_name):
 
     return category, estimated_price
 
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "shopping_list": [],
+        "next_trip_list": [],
+        "purchase_history": [],
+        "budget": 300.0,
+        "cloud_sync_url": ""
+    }
+
+def save_data():
+    data = {
+        "shopping_list": st.session_state.shopping_list,
+        "next_trip_list": st.session_state.next_trip_list,
+        "purchase_history": st.session_state.purchase_history,
+        "budget": st.session_state.budget,
+        "cloud_sync_url": st.session_state.cloud_sync_url
+    }
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    
+    if st.session_state.cloud_sync_url:
+        try:
+            requests.put(st.session_state.cloud_sync_url, json=data, timeout=2)
+        except Exception:
+            pass
+
+saved_data = load_data()
+if 'shopping_list' not in st.session_state:
+    st.session_state.shopping_list = saved_data["shopping_list"]
+if 'next_trip_list' not in st.session_state:
+    st.session_state.next_trip_list = saved_data["next_trip_list"]
+if 'purchase_history' not in st.session_state:
+    st.session_state.purchase_history = saved_data["purchase_history"]
+if 'budget' not in st.session_state:
+    st.session_state.budget = saved_data.get("budget", 300.0)
+if 'cloud_sync_url' not in st.session_state:
+    st.session_state.cloud_sync_url = saved_data.get("cloud_sync_url", "")
+
 menu = st.sidebar.selectbox("תפריט ניווט", [
     "🛒 רשימת קניות פעילה", 
     "➕ הוספת פריטים חכמה", 
@@ -239,6 +231,16 @@ menu = st.sidebar.selectbox("תפריט ניווט", [
 if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת קניות פעילה":
     st.title("🛒 רשימת הקניות לסופר")
     
+    # כפתור חדש לעדכון גורף של המחירים ברשימה הקיימת
+    if st.button("🔄 עדכן מחירים וקטגוריות לרשימה הנוכחית"):
+        for item in st.session_state.shopping_list:
+            cat, price = smart_ai_categorize_and_price(item['name'])
+            item['category'] = cat
+            item['estimated_price'] = price
+        save_data()
+        st.success("כל המחירים והקטגוריות ברשימה עודכנו בהצלחה לפי המחירון המעודכן!")
+        st.rerun()
+
     total_cost = sum(item['quantity'] * item['estimated_price'] for item in st.session_state.shopping_list if not item['checked'])
     
     col1, col2 = st.columns(2)
