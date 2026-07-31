@@ -11,7 +11,7 @@ from PIL import Image
 # הגדרת עמוד האפליקציה
 st.set_page_config(page_title="ניהול קניות חכם ומתקדם", page_icon="🛒", layout="centered")
 
-# עיצוב מותאם לעברית (RTL), קיבוע תפריט הניווט, וטבלה בסגנון אקסל
+# עיצוב מותאם לעברית (RTL) וטבלה בסגנון אקסל לנייד (בלי לפגוע בתפריט)
 st.markdown("""
 <style>
     body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox {
@@ -24,16 +24,6 @@ st.markdown("""
         padding: 10px;
         border-radius: 10px;
         text-align: center;
-    }
-    /* תיקון קריטי: מניעת תקיעת תפריט הניווט במרכז המסך בנייד */
-    [data-testid="stSidebar"] {
-        right: 0 !important;
-        left: auto !important;
-    }
-    @media (max-width: 768px) {
-        [data-testid="stSidebar"] {
-            width: 75% !important;
-        }
     }
     /* עיצוב טבלה בסגנון אקסל מדויק לנייד */
     .excel-table {
@@ -219,7 +209,6 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
 
         st.subheader("לקנות עכשיו:")
         
-        # בניית כותרת הטבלה בסגנון אקסל
         st.markdown("""
         <table class="excel-table">
             <tr>
@@ -237,7 +226,6 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
                 if selected_category_filter != "הכל (ללא סינון)" and item['category'] != selected_category_filter:
                     continue
 
-                # שורת טבלה נקייה המכילה את נתוני המוצר עם שם מודגש וגדול
                 st.markdown(f"""
                 <table class="excel-table">
                     <tr>
@@ -250,7 +238,6 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
                 </table>
                 """, unsafe_allow_html=True)
                 
-                # הזרקת האינטראקציות של Streamlit לתוך השורות של הטבלה
                 col_chk, col_cat, col_mis, col_del = st.columns([0.8, 2.2, 1.1, 1.1])
                 with col_chk:
                     checked = st.checkbox("V", key=f"check_{idx}", value=item['checked'], label_visibility="collapsed")
