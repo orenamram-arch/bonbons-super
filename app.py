@@ -9,7 +9,7 @@ from PIL import Image
 # הגדרת עמוד האפליקציה
 st.set_page_config(page_title="ניהול קניות חכם", page_icon="🛒", layout="centered")
 
-# עיצוב מתקדם ומודרני (Modern UI & RTL) - ניקוי מלא של ה-Checkboxes ושמירה על יישור מושלם
+# עיצוב מתקדם ומודרני (Modern UI & RTL)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
@@ -248,7 +248,6 @@ if menu == "🛒 רשימת קניות פעילה":
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # שימוש בכפתורי פעולה נקיים במקום Checkboxes
                     col_buy, col_cat, col_mis, col_del = st.columns([1.2, 2.2, 1, 1])
                     with col_buy:
                         if st.button("✔️ נקנה", key=f"buy_{idx}", type="primary"):
@@ -286,15 +285,21 @@ if menu == "🛒 רשימת קניות פעילה":
             st.subheader("✅ פריטים שסומנו כנקנו:")
             for idx, item in enumerate(st.session_state.shopping_list):
                 if item['checked']:
-                    col_chk_name, col_chk_del = st.columns([4, 1])
+                    col_chk_name, col_chk_return, col_chk_del = st.columns([3, 1.2, 1])
                     with col_chk_name:
                         st.write(f"~~{item['name']} (כמות: {item['quantity']})~~")
+                    with col_chk_return:
+                        if st.button("↩️ החזר", key=f"return_{idx}"):
+                            st.session_state.shopping_list[idx]['checked'] = False
+                            save_data()
+                            st.rerun()
                     with col_chk_del:
-                        if st.button("🗑️", key=f"del_checked_{idx}"):
+                        if st.button("🗑️ מחק", key=f"del_checked_{idx}"):
                             st.session_state.shopping_list.pop(idx)
                             save_data()
                             st.rerun()
 
+            st.markdown("<br>", unsafe_allow_html=True)
             if st.button("🏁 סיים קנייה ושמור היסטוריה", type="primary"):
                 trip_date = datetime.now().strftime("%Y-%m-%d %H:%M")
                 trip_total = sum(i['quantity'] * i['estimated_price'] for i in checked_items)
