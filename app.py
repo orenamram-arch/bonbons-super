@@ -11,7 +11,7 @@ from PIL import Image
 # הגדרת עמוד האפליקציה
 st.set_page_config(page_title="ניהול קניות חכם ומתקדם", page_icon="🛒", layout="centered")
 
-# עיצוב מותאם לעברית (RTL) ותצוגת כרטיסיות מותאמות בדיוק לרוחב הנייד
+# עיצוב מותאם לעברית (RTL) וטבלה מותאמת בול לרוחב הנייד
 st.markdown("""
 <style>
     body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox {
@@ -25,19 +25,27 @@ st.markdown("""
         border-radius: 10px;
         text-align: center;
     }
-    /* עיצוב כרטיסיית מוצר נקייה לנייד */
-    .shopping-card {
-        background-color: rgba(150, 150, 150, 0.05);
-        padding: 10px;
+    /* עיצוב טבלה רספונסיבית לנייד */
+    .mobile-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10px;
+        background-color: rgba(150, 150, 150, 0.03);
         border-radius: 8px;
-        margin-bottom: 8px;
-        border: 1px solid rgba(150, 150, 150, 0.2);
+        overflow: hidden;
+        border: 1px solid rgba(150, 150, 150, 0.15);
+    }
+    .mobile-table td {
+        padding: 8px 6px;
+        vertical-align: middle;
+        font-size: 14px;
     }
     @media (max-width: 768px) {
         .stButton>button {
             width: 100%;
-            padding: 4px 8px !important;
-            font-size: 12px !important;
+            padding: 2px 4px !important;
+            font-size: 11px !important;
+            min-height: 28px !important;
         }
     }
 </style>
@@ -186,50 +194,50 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
                 if selected_category_filter != "הכל (ללא סינון)" and item['category'] != selected_category_filter:
                     continue
 
-                # תצוגת כרטיסייה מותאמת רוחב נייד
-                with st.container():
-                    st.markdown('<div class="shopping-card">', unsafe_allow_html=True)
-                    
-                    # שורה ראשונה בכרטיסייה: תיבת סימון, שם הפריט והמחיר המשוער
-                    c1, c2, c3 = st.columns([0.5, 2.5, 1.2])
-                    with c1:
-                        checked = st.checkbox("V", key=f"check_{idx}", value=item['checked'])
-                        if checked != item['checked']:
-                            st.session_state.shopping_list[idx]['checked'] = checked
-                            save_data()
-                            st.rerun()
-                    with c2:
-                        st.markdown(f"**{item['name']}** (כמות: {item['quantity']})")
-                    with c3:
-                        st.markdown(f"**₪{item['quantity'] * item['estimated_price']:.2f}**")
-                    
-                    # שורה שנייה בכרטיסייה: בחירת קטגוריה וכפתורי פעולה (חסר / מחיקה)
-                    c4, c5, c6 = st.columns([2, 1, 1])
-                    with c4:
-                        current_cat_idx = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 0
-                        new_cat = st.selectbox("קטגוריה", CATEGORIES, index=current_cat_idx, key=f"cat_{idx}", label_visibility="collapsed")
-                        if new_cat != item['category']:
-                            st.session_state.shopping_list[idx]['category'] = new_cat
-                            save_data()
-                            st.rerun()
-                    with c5:
-                        if st.button("❌ חסר", key=f"missing_{idx}"):
-                            st.session_state.next_trip_list.append({
-                                "name": item['name'],
-                                "quantity": item['quantity'],
-                                "category": item['category'],
-                                "estimated_price": item['estimated_price']
-                            })
-                            st.session_state.shopping_list.pop(idx)
-                            save_data()
-                            st.rerun()
-                    with c6:
-                        if st.button("🗑️", key=f"delete_{idx}"):
-                            st.session_state.shopping_list.pop(idx)
-                            save_data()
-                            st.rerun()
-                            
-                    st.markdown('</div>', unsafe_allow_html=True)
+                # בניית שורה טבלאית נקייה שמותאמת לרוחב המסך
+                st.markdown(f"""
+                <table class="mobile-table">
+                    <tr>
+                        <td style="width: 10%;"></td>
+                        <td style="width: 45%;"><b>{item['name']}</b><br><small>כמות: {item['quantity']} | ₪{item['quantity'] * item['estimated_price']:.2f}</small></td>
+                        <td style="width: 45%;"></td>
+                    </tr>
+                </table>
+                """, unsafe_allow_html=True)
+                
+                # הוספת רכיבי האינטראקציה של Streamlit מעל/בתוך השורה בצורה מותאמת
+                col_chk, col_sel, col_mis, col_del = st.columns([0.6, 2.2, 1.1, 1.1])
+                with col_chk:
+                    checked = st.checkbox("V", key=f"check_{idx}", value=item['checked'])
+                    if checked != item['checked']:
+                        st.session_state.shopping_list[idx]['checked'] = checked
+                        save_data()
+                        st.rerun()
+                with col_sel:
+                    current_cat_idx = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 0
+                    new_cat = st.selectbox("קטגוריה", CATEGORIES, index=current_cat_idx, key=f"cat_{idx}", label_visibility="collapsed")
+                    if new_cat != item['category']:
+                        st.session_state.shopping_list[idx]['category'] = new_cat
+                        save_data()
+                        st.rerun()
+                with col_mis:
+                    if st.button("❌ חסר", key=f"missing_{idx}"):
+                        st.session_state.next_trip_list.append({
+                            "name": item['name'],
+                            "quantity": item['quantity'],
+                            "category": item['category'],
+                            "estimated_price": item['estimated_price']
+                        })
+                        st.session_state.shopping_list.pop(idx)
+                        save_data()
+                        st.rerun()
+                with col_del:
+                    if st.button("🗑️ מחיקה", key=f"delete_{idx}"):
+                        st.session_state.shopping_list.pop(idx)
+                        save_data()
+                        st.rerun()
+                
+                st.markdown("<hr style='margin:2px 0 10px 0; border:0; border-top:1px solid rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
 
         checked_items = [i for i in st.session_state.shopping_list if i['checked']]
         if checked_items:
