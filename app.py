@@ -3,9 +3,11 @@ import pandas as pd
 from datetime import datetime
 from duckduckgo_search import DDGS
 import re
+import json
+import os
 
 # הגדרת עמוד האפליקציה
-st.set_page_config(page_title="ניהול קניות חכם וחצי-אוטומטי", page_icon="🛒", layout="centered")
+st.set_page_config(page_title="ניהול קניות חכם ושמור", page_icon="🛒", layout="centered")
 
 # עיצוב מותאם לעברית (RTL)
 st.markdown("""
@@ -24,19 +26,46 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# אתחול הנתונים בזיכרון (Session State)
+# שם קובץ השמירה המקומי
+DATA_FILE = "shopping_data.json"
+
+def load_data():
+    """פונקציה שטוענת את הנתונים מהקובץ המקומי אם הוא קיים"""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # ברירת מחדל אם הקובץ לא קיים
+    return {
+        "shopping_list": [
+            {"name": "חלב 3%", "quantity": 2, "category": "מוצרי חלב", "estimated_price": 7.2, "checked": False},
+            {"name": "לחם אחיד", "quantity": 1, "category": "מאפים", "estimated_price": 8.5, "checked": False},
+            {"name": "מלפפונים", "quantity": 1, "category": "ירקות ופירות", "estimated_price": 10.0, "checked": False},
+        ],
+        "next_trip_list": [],
+        "purchase_history": []
+    }
+
+def save_data():
+    """פונקציה ששומרת את כל הנתונים הנוכחיים לקובץ המקומי"""
+    data = {
+        "shopping_list": st.session_state.shopping_list,
+        "next_trip_list": st.session_state.next_trip_list,
+        "purchase_history": st.session_state.purchase_history
+    }
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+# טעינת הנתונים לתוך הזיכרון בעת הפעלת האפליקציה
+saved_data = load_data()
 if 'shopping_list' not in st.session_state:
-    st.session_state.shopping_list = [
-        {"name": "חלב 3%", "quantity": 2, "category": "מוצרי חלב", "estimated_price": 7.2, "checked": False},
-        {"name": "לחם אחיד", "quantity": 1, "category": "מאפים", "estimated_price": 8.5, "checked": False},
-        {"name": "מלפפונים", "quantity": 1, "category": "ירקות ופירות", "estimated_price": 10.0, "checked": False},
-    ]
-
+    st.session_state.shopping_list = saved_data["shopping_list"]
 if 'next_trip_list' not in st.session_state:
-    st.session_state.next_trip_list = []
-
+    st.session_state.next_trip_list = saved_data["next_trip_list"]
 if 'purchase_history' not in st.session_state:
-    st.session_state.purchase_history = []
+    st.session_state.purchase_history = saved_data["purchase_history"]
 
 CATEGORIES = ["ירקות ופירות", "מוצרי חלב", "בשר ודגים", "מאפים", "חומרי ניקוי", "חטיפים וממתקים", "שימורים ויבשים", "שונות"]
 
@@ -44,7 +73,6 @@ def auto_categorize_and_price(item_name):
     """פונקציה שמזהה אוטומטית קטגוריה ומחפשת מחיר משוער ברשת"""
     name_lower = item_name.lower()
     
-    # 1. זיהוי קטגוריה אוטומטי לפי מילות מפתח
     category = "שונות"
     if any(w in name_lower for w in ["מלפפון", "עגבנייה", "בצל", "תפוח", "בננה", "גזר", "פלפל", "לימון", "חסה", "תפוחי אדמה", "אבוקדו"]):
         category = "ירקות ופירות"
@@ -61,24 +89,21 @@ def auto_categorize_and_price(item_name):
     elif any(w in name_lower for w in ["אורז", "פסטה", "שמן", "קמח", "סוכר", "מלח", "שימורים"]):
         category = "שימורים ויבשים"
 
-    # 2. חיפוש מחיר משוער ברשת דרך DuckDuckGo
-    estimated_price = 10.0 # ברירת מחדל אם החיפוש נכשל
+    estimated_price = 10.0
     try:
         query = f"מחיר {item_name} שופרסל רמי לוי"
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=3))
             for r in results:
                 snippet = r.get('body', '')
-                # חיפוש מספרים שמוצמדים לסימן שקל או מילים כמו ש"ח
                 prices = re.findall(r'(\d+[\.,]?\d*)\s*(?:₪|ש"ח|שקל)', snippet)
                 if prices:
-                    # נבחר מחיר הגיוני ראשון שנמצא (למשל בין 2 ל-200 שקל)
                     valid_prices = [float(p.replace(',', '.')) for p in prices if 2 <= float(p.replace(',', '.')) <= 200]
                     if valid_prices:
                         estimated_price = valid_prices[0]
                         break
     except Exception:
-        pass # במקרה של בעיית תקשורת נשאר עם ברירת המחדל
+        pass
 
     return category, estimated_price
 
@@ -91,7 +116,6 @@ menu = st.sidebar.selectbox("תפריט ניווט", ["🛒 רשימת קניו�
 if menu == "🛒 רשימת קניות פעילה":
     st.title("🛒 רשימת הקניות לסופר")
     
-    # חישוב עלות כוללת לסל
     total_cost = sum(item['quantity'] * item['estimated_price'] for item in st.session_state.shopping_list if not item['checked'])
     
     col1, col2 = st.columns(2)
@@ -106,7 +130,6 @@ if menu == "🛒 רשימת קניות פעילה":
     if not st.session_state.shopping_list:
         st.info("רשימת הקניות ריקה לגמרי! אפשר להוסיף פריטים דרך התפריט בצד.")
     else:
-        # פילטר מיון לפי קטגוריות
         active_items = [i for i in st.session_state.shopping_list if not i['checked']]
         categories_in_list = sorted(list(set(i['category'] for i in active_items)))
         
@@ -116,7 +139,6 @@ if menu == "🛒 רשימת קניות פעילה":
         
         for idx, item in enumerate(st.session_state.shopping_list):
             if not item['checked']:
-                # סינון לפי הקטגוריה שנבחרה
                 if selected_category_filter != "הכל (ללא סינון)" and item['category'] != selected_category_filter:
                     continue
 
@@ -126,6 +148,7 @@ if menu == "🛒 רשימת קניות פעילה":
                     checked = st.checkbox("V", key=f"check_{idx}", value=item['checked'])
                     if checked != item['checked']:
                         st.session_state.shopping_list[idx]['checked'] = checked
+                        save_data() # שמירה אוטומטית בשינוי V
                         st.rerun()
                 
                 with col_name:
@@ -143,9 +166,9 @@ if menu == "🛒 רשימת קניות פעילה":
                             "estimated_price": item['estimated_price']
                         })
                         st.session_state.shopping_list.pop(idx)
+                        save_data() # שמירה אוטומטית בהעברה לחסרים
                         st.rerun()
 
-        # פריטים שנקנו
         checked_items = [i for i in st.session_state.shopping_list if i['checked']]
         if checked_items:
             st.markdown("---")
@@ -168,6 +191,7 @@ if menu == "🛒 רשימת קניות פעילה":
                         st.session_state.shopping_list.append(n_item)
                     st.session_state.next_trip_list = []
                 
+                save_data() # שמירה אוטומטית בסיום קנייה
                 st.success("הקנייה עודכנה בהצלחה ונשמרה בהיסטוריה!")
                 st.rerun()
 
@@ -178,7 +202,7 @@ if menu == "🛒 רשימת קניות פעילה":
             st.write(f"• {n_item['name']} (כמות: {n_item['quantity']})")
 
 # ----------------------------------------------------
-# 2. הוספת פריטים חכמה (זיהוי אוטומטי וחיפוש מחיר)
+# 2. הוספת פריטים חכמה
 # ----------------------------------------------------
 elif menu == "➕ הוספת פריטים חכמה":
     st.title("➕ הוספת פריט חדש (אוטומטי לחלוטין)")
@@ -202,6 +226,7 @@ elif menu == "➕ הוספת פריטים חכמה":
                     "estimated_price": estimated_price,
                     "checked": False
                 })
+                save_data() # שמירה אוטומטית בהוספת פריט
                 st.success(f"הפריט '{item_name}' נוסף בהצלחה! סווג כ־**{category}** במחיר משוער של **₪{estimated_price:.2f}** ליחידה.")
             else:
                 st.warning("נא להזין שם פריט תקין.")
