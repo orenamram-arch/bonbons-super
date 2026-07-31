@@ -4,9 +4,8 @@ from datetime import datetime
 import json
 import os
 import requests
-from PIL import Image
 
-# הגדרת עמוד האפליקציה
+# הגדרת עמוד האפליקציה (חייב להיות ראשון)
 st.set_page_config(page_title="ניהול קניות אולטימטיבי", page_icon="🛒", layout="centered")
 
 DATA_FILE = "shopping_data.json"
@@ -20,7 +19,6 @@ FAVOURITES_DB = [
     {"name": "קוטג'", "category": "מוצרי חלב", "estimated_price": 6.8}
 ]
 
-# סדר מעברים הגיוני בסופר
 AISLE_ORDER = {
     "ירקות ופירות": 1,
     "מאפים": 2,
@@ -83,7 +81,7 @@ if 'dark_mode' not in st.session_state: st.session_state.dark_mode = saved_data.
 if st.session_state.active_store not in st.session_state.stores:
     st.session_state.stores[st.session_state.active_store] = []
 
-# --- עיצוב דינמי (מצב בהיר / כהה) ---
+# --- עיצוב דינמי (מצב בהיר / כהה) והעלמת תפריטים אוטומטיים מיותרים ---
 dark = st.session_state.dark_mode
 bg_color = "#0f172a" if dark else "#f7f9fb"
 card_bg = "#1e293b" if dark else "#ffffff"
@@ -94,6 +92,11 @@ border_color = "#334155" if dark else "#e2e8f0"
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
+
+    /* הסתרה מוחלטת של תפריטי ניווט אוטומטיים שמופיעים באמצע או בצד */
+    [data-testid="stSidebarNav"], div[data-testid="stToolbar"], header {{
+        display: none !important;
+    }}
 
     body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox {{
         direction: rtl;
@@ -174,7 +177,7 @@ def ai_smart_categorize_and_price(item_name):
             return cat, price
     return "שונות", 12.0
 
-# --- הגדרות סרגל צד נקיות בלבד (ללא תפריטים באמצע המסך) ---
+# --- הגדרות סרגל צד נקיות בלבד ---
 st.sidebar.title("⚙️ הגדרות מהירות")
 store_list = list(st.session_state.stores.keys())
 selected_store = st.sidebar.selectbox("🏪 בחר חנות / רשימה:", store_list, index=store_list.index(st.session_state.active_store))
