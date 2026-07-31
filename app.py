@@ -11,7 +11,7 @@ from PIL import Image
 # הגדרת עמוד האפליקציה
 st.set_page_config(page_title="ניהול קניות חכם ומתקדם", page_icon="🛒", layout="centered")
 
-# עיצוב מותאם לעברית (RTL) וטבלה מותאמת בול לרוחב הנייד
+# עיצוב מותאם לעברית (RTL) וטבלה בסגנון אקסל עם מוצרים מודגשים וגדולים
 st.markdown("""
 <style>
     body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox {
@@ -25,27 +25,47 @@ st.markdown("""
         border-radius: 10px;
         text-align: center;
     }
-    /* עיצוב טבלה רספונסיבית לנייד */
-    .mobile-table {
+    /* עיצוב טבלה בסגנון אקסל מדויק לנייד */
+    .excel-table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 10px;
-        background-color: rgba(150, 150, 150, 0.03);
-        border-radius: 8px;
-        overflow: hidden;
-        border: 1px solid rgba(150, 150, 150, 0.15);
+        margin-bottom: 5px;
+        background-color: rgba(150, 150, 150, 0.02);
+        border: 1px solid #ddd;
     }
-    .mobile-table td {
-        padding: 8px 6px;
+    .excel-table th {
+        background-color: #f1f3f5;
+        color: #333;
+        padding: 8px 4px;
+        font-size: 13px;
+        border: 1px solid #ddd;
+        text-align: center;
+    }
+    .excel-table td {
+        padding: 8px 4px;
         vertical-align: middle;
-        font-size: 14px;
+        border: 1px solid #ddd;
+        font-size: 13px;
+    }
+    /* הדגשה והגדלת הפונט של שם המוצר יחסית ליתר הנתונים */
+    .product-name {
+        font-size: 17px !important;
+        font-weight: 800 !important;
+        color: #1f77b4;
     }
     @media (max-width: 768px) {
         .stButton>button {
             width: 100%;
-            padding: 2px 4px !important;
+            padding: 2px 2px !important;
             font-size: 11px !important;
-            min-height: 28px !important;
+            min-height: 26px !important;
+        }
+        .excel-table td, .excel-table th {
+            font-size: 11px;
+            padding: 4px 2px;
+        }
+        .product-name {
+            font-size: 15px !important;
         }
     }
 </style>
@@ -156,7 +176,7 @@ menu = st.sidebar.selectbox("תפריט ניווט", [
 ])
 
 # ----------------------------------------------------
-# 1. רשימת קניות פעילה
+# 1. רשימת קניות פעילה (טבלת אקסל נקייה)
 # ----------------------------------------------------
 if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת קניות פעילה":
     st.title("🛒 רשימת הקניות לסופר")
@@ -189,31 +209,46 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
 
         st.subheader("לקנות עכשיו:")
         
+        # בניית כותרת הטבלה בסגנון אקסל
+        st.markdown("""
+        <table class="excel-table">
+            <tr>
+                <th style="width: 8%;">V</th>
+                <th style="width: 34%;">שם המוצר וכמות</th>
+                <th style="width: 25%;">קטגוריה</th>
+                <th style="width: 15%;">מחיר משוער</th>
+                <th style="width: 18%;">פעולות</th>
+            </tr>
+        </table>
+        """, unsafe_allow_html=True)
+        
         for idx, item in enumerate(st.session_state.shopping_list):
             if not item['checked']:
                 if selected_category_filter != "הכל (ללא סינון)" and item['category'] != selected_category_filter:
                     continue
 
-                # בניית שורה טבלאית נקייה שמותאמת לרוחב המסך
+                # שורת טבלה נקייה המכילה את נתוני המוצר עם שם מודגש וגדול
                 st.markdown(f"""
-                <table class="mobile-table">
+                <table class="excel-table">
                     <tr>
-                        <td style="width: 10%;"></td>
-                        <td style="width: 45%;"><b>{item['name']}</b><br><small>כמות: {item['quantity']} | ₪{item['quantity'] * item['estimated_price']:.2f}</small></td>
-                        <td style="width: 45%;"></td>
+                        <td style="width: 8%; text-align: center;" id="chk_{idx}"></td>
+                        <td style="width: 34%;"><span class="product-name">{item['name']}</span><br><small>כמות: {item['quantity']}</small></td>
+                        <td style="width: 25%;" id="cat_{idx}"></td>
+                        <td style="width: 15%; text-align: center;"><b>₪{item['quantity'] * item['estimated_price']:.2f}</b></td>
+                        <td style="width: 18%; text-align: center;" id="btns_{idx}"></td>
                     </tr>
                 </table>
                 """, unsafe_allow_html=True)
                 
-                # הוספת רכיבי האינטראקציה של Streamlit מעל/בתוך השורה בצורה מותאמת
-                col_chk, col_sel, col_mis, col_del = st.columns([0.6, 2.2, 1.1, 1.1])
+                # הזרקת האינטראקציות של Streamlit לתוך השורות של הטבלה
+                col_chk, col_cat, col_mis, col_del = st.columns([0.8, 2.2, 1.1, 1.1])
                 with col_chk:
-                    checked = st.checkbox("V", key=f"check_{idx}", value=item['checked'])
+                    checked = st.checkbox("V", key=f"check_{idx}", value=item['checked'], label_visibility="collapsed")
                     if checked != item['checked']:
                         st.session_state.shopping_list[idx]['checked'] = checked
                         save_data()
                         st.rerun()
-                with col_sel:
+                with col_cat:
                     current_cat_idx = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 0
                     new_cat = st.selectbox("קטגוריה", CATEGORIES, index=current_cat_idx, key=f"cat_{idx}", label_visibility="collapsed")
                     if new_cat != item['category']:
@@ -237,7 +272,7 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
                         save_data()
                         st.rerun()
                 
-                st.markdown("<hr style='margin:2px 0 10px 0; border:0; border-top:1px solid rgba(150,150,150,0.2);'>", unsafe_allow_html=True)
+                st.markdown("<div style='margin-bottom: 4px;'></div>", unsafe_allow_html=True)
 
         checked_items = [i for i in st.session_state.shopping_list if i['checked']]
         if checked_items:
