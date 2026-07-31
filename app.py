@@ -9,7 +9,7 @@ from PIL import Image
 # הגדרת עמוד האפליקציה
 st.set_page_config(page_title="ניהול קניות חכם", page_icon="🛒", layout="centered")
 
-# עיצוב מתקדם ומודרני (Modern UI & RTL)
+# עיצוב מתקדם ומודרני (Modern UI & RTL) ותיקון תצוגת סרגל הצד
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
@@ -60,7 +60,6 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         margin-bottom: 8px;
         border-right: 5px solid #10b981;
-        transition: all 0.2s ease;
     }
     .product-name {
         font-size: 18px !important;
@@ -78,10 +77,6 @@ st.markdown("""
         font-weight: 600;
         transition: all 0.2s;
     }
-    .stButton>button:hover {
-        border-color: #3b82f6;
-        color: #3b82f6;
-    }
 
     /* התאמה למסכי טלפון נייד */
     @media (max-width: 768px) {
@@ -89,9 +84,6 @@ st.markdown("""
             width: 100%;
             font-size: 12px !important;
             padding: 6px !important;
-        }
-        .product-card {
-            padding: 10px;
         }
     }
 </style>
@@ -199,17 +191,15 @@ if 'budget' not in st.session_state:
 if 'cloud_sync_url' not in st.session_state:
     st.session_state.cloud_sync_url = saved_data.get("cloud_sync_url", "")
 
-# תפריט ניווט מעוצב בסרגל הצד
-st.sidebar.title("🛒 ניהול קניות חכם")
-st.sidebar.markdown("---")
-menu = st.sidebar.radio("תפריט ניווט:", [
+# תפריט ניווט נקי בסרגל הצד (ללא כותרות ארוכות שנמרχות)
+menu = st.sidebar.radio("תפריט:", [
     "🛒 רשימת קניות פעילה", 
     "➕ הוספת פריטים חכמה", 
     "⭐ מוצרים מועדפים מהירים",
     "📷 סריקת פתק/קבלה (AI)",
     "📊 סטטיסטיקות ותקציב",
     "⚙️ הגדרות וסינכרון ענן"
-])
+], label_visibility="collapsed")
 
 # ----------------------------------------------------
 # 1. רשימת קניות פעילה
