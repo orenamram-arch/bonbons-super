@@ -26,18 +26,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# שם קובץ השמירה המקומי
 DATA_FILE = "shopping_data.json"
 
 def load_data():
-    """פונקציה שטוענת את הנתונים מהקובץ המקומי אם הוא קיים"""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
-    # ברירת מחדל אם הקובץ לא קיים
     return {
         "shopping_list": [
             {"name": "חלב 3%", "quantity": 2, "category": "מוצרי חלב", "estimated_price": 7.2, "checked": False},
@@ -49,7 +46,6 @@ def load_data():
     }
 
 def save_data():
-    """פונקציה ששומרת את כל הנתונים הנוכחיים לקובץ המקומי"""
     data = {
         "shopping_list": st.session_state.shopping_list,
         "next_trip_list": st.session_state.next_trip_list,
@@ -58,7 +54,6 @@ def save_data():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# טעינת הנתונים לתוך הזיכרון בעת הפעלת האפליקציה
 saved_data = load_data()
 if 'shopping_list' not in st.session_state:
     st.session_state.shopping_list = saved_data["shopping_list"]
@@ -70,7 +65,6 @@ if 'purchase_history' not in st.session_state:
 CATEGORIES = ["ירקות ופירות", "מוצרי חלב", "בשר ודגים", "מאפים", "חומרי ניקוי", "חטיפים וממתקים", "שימורים ויבשים", "שונות"]
 
 def auto_categorize_and_price(item_name):
-    """פונקציה שמזהה אוטומטית קטגוריה ומחפשת מחיר משוער ברשת"""
     name_lower = item_name.lower()
     
     category = "שונות"
@@ -107,11 +101,10 @@ def auto_categorize_and_price(item_name):
 
     return category, estimated_price
 
-# תפריט ניווט צידי
 menu = st.sidebar.selectbox("תפריט ניווט", ["🛒 רשימת קניות פעילה", "➕ הוספת פריטים חכמה", "📊 סטטיסטיקות והיסטוריה"])
 
 # ----------------------------------------------------
-# 1. רשימת קניות פעילה עם אפשרות מיון לפי קטגוריות
+# 1. רשימת קניות פעילה
 # ----------------------------------------------------
 if menu == "🛒 רשימת קניות פעילה":
     st.title("🛒 רשימת הקניות לסופר")
@@ -142,17 +135,18 @@ if menu == "🛒 רשימת קניות פעילה":
                 if selected_category_filter != "הכל (ללא סינון)" and item['category'] != selected_category_filter:
                     continue
 
-                col_c, col_name, col_cat, col_price, col_miss = st.columns([0.5, 2, 1.5, 1, 1.5])
+                # חלוקה לעמודות: V, שם, קטגוריה, מחיר, כפתור חסר, כפתור מחיקה
+                col_c, col_name, col_cat, col_price, col_miss, col_del = st.columns([0.4, 1.8, 1.2, 0.9, 1.2, 0.9])
                 
                 with col_c:
                     checked = st.checkbox("V", key=f"check_{idx}", value=item['checked'])
                     if checked != item['checked']:
                         st.session_state.shopping_list[idx]['checked'] = checked
-                        save_data() # שמירה אוטומטית בשינוי V
+                        save_data()
                         st.rerun()
                 
                 with col_name:
-                    st.write(f"**{item['name']}** (כמות: {item['quantity']})")
+                    st.write(f"**{item['name']}** ({item['quantity']})")
                 with col_cat:
                     st.caption(item['category'])
                 with col_price:
@@ -166,15 +160,28 @@ if menu == "🛒 רשימת קניות פעילה":
                             "estimated_price": item['estimated_price']
                         })
                         st.session_state.shopping_list.pop(idx)
-                        save_data() # שמירה אוטומטית בהעברה לחסרים
+                        save_data()
+                        st.rerun()
+                with col_del:
+                    if st.button("🗑️", key=f"delete_{idx}"):
+                        st.session_state.shopping_list.pop(idx)
+                        save_data()
                         st.rerun()
 
         checked_items = [i for i in st.session_state.shopping_list if i['checked']]
         if checked_items:
             st.markdown("---")
             st.subheader("✅ פריטים שסומנו כנקנו:")
-            for item in checked_items:
-                st.write(f"~~{item['name']} (כמות: {item['quantity']})~~")
+            for idx, item in enumerate(st.session_state.shopping_list):
+                if item['checked']:
+                    col_chk_name, col_chk_del = st.columns([4, 1])
+                    with col_chk_name:
+                        st.write(f"~~{item['name']} (כמות: {item['quantity']})~~")
+                    with col_chk_del:
+                        if st.button("🗑️", key=f"del_checked_{idx}"):
+                            st.session_state.shopping_list.pop(idx)
+                            save_data()
+                            st.rerun()
 
             if st.button("🏁 סיים קנייה ושמור היסטוריה"):
                 trip_date = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -191,15 +198,22 @@ if menu == "🛒 רשימת קניות פעילה":
                         st.session_state.shopping_list.append(n_item)
                     st.session_state.next_trip_list = []
                 
-                save_data() # שמירה אוטומטית בסיום קנייה
+                save_data()
                 st.success("הקנייה עודכנה בהצלחה ונשמרה בהיסטוריה!")
                 st.rerun()
 
     if st.session_state.next_trip_list:
         st.markdown("---")
         st.subheader("📋 פריטים שהועברו לרשימה הבאה (כי היו חסרים):")
-        for n_item in st.session_state.next_trip_list:
-            st.write(f"• {n_item['name']} (כמות: {n_item['quantity']})")
+        for idx, n_item in enumerate(st.session_state.next_trip_list):
+            col_n_name, col_n_del = st.columns([4, 1])
+            with col_n_name:
+                st.write(f"• {n_item['name']} (כמות: {n_item['quantity']})")
+            with col_n_del:
+                if st.button("🗑️", key=f"del_next_{idx}"):
+                    st.session_state.next_trip_list.pop(idx)
+                    save_data()
+                    st.rerun()
 
 # ----------------------------------------------------
 # 2. הוספת פריטים חכמה
@@ -226,7 +240,7 @@ elif menu == "➕ הוספת פריטים חכמה":
                     "estimated_price": estimated_price,
                     "checked": False
                 })
-                save_data() # שמירה אוטומטית בהוספת פריט
+                save_data()
                 st.success(f"הפריט '{item_name}' נוסף בהצלחה! סווג כ־**{category}** במחיר משוער של **₪{estimated_price:.2f}** ליחידה.")
             else:
                 st.warning("נא להזין שם פריט תקין.")
