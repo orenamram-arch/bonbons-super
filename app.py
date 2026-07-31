@@ -7,7 +7,7 @@ import requests
 from PIL import Image
 
 # הגדרת עמוד האפליקציה
-st.set_page_config(page_title="ניהול קניות חכם ומעוצב", page_icon="🛒", layout="centered")
+st.set_page_config(page_title="ניהול קניות אולטימטיבי", page_icon="🛒", layout="centered")
 
 DATA_FILE = "shopping_data.json"
 CATEGORIES = ["ירקות ופירות", "מוצרי חלב", "בשר ודגים", "מאפים", "חומרי ניקוי", "חטיפים וממתקים", "שימורים ויבשים", "שונות"]
@@ -20,18 +20,27 @@ FAVOURITES_DB = [
     {"name": "קוטג'", "category": "מוצרי חלב", "estimated_price": 6.8}
 ]
 
+# סדר מעברים הגיוני בסופר
+AISLE_ORDER = {
+    "ירקות ופירות": 1,
+    "מאפים": 2,
+    "מוצרי חלב": 3,
+    "בשר ודגים": 4,
+    "שימורים ויבשים": 5,
+    "חטיפים וממתקים": 6,
+    "חומרי ניקוי": 7,
+    "שונות": 8
+}
+
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                
-                # אם הקובץ הוא מהמבנה הישן (השתמש ב-shopping_list), נמיר אותו אוטומטית למבנה חנויות חדש!
                 if "shopping_list" in data and "stores" not in data:
                     old_list = data["shopping_list"]
                     data["stores"] = {"סופרמרקט מרכזי": old_list}
                     data["active_store"] = "סופרמרקט מרכזי"
-                
                 return data
         except Exception:
             pass
@@ -41,8 +50,9 @@ def load_data():
         "active_store": "סופרמרקט מרכזי",
         "next_trip_list": [],
         "purchase_history": [],
+        "recurring_items": [],
         "budget": 300.0,
-        "cloud_sync_url": "",
+        "family_code": "family123",
         "dark_mode": False
     }
 
@@ -52,39 +62,36 @@ def save_data():
         "active_store": st.session_state.active_store,
         "next_trip_list": st.session_state.next_trip_list,
         "purchase_history": st.session_state.purchase_history,
+        "recurring_items": st.session_state.recurring_items,
         "budget": st.session_state.budget,
-        "cloud_sync_url": st.session_state.cloud_sync_url,
+        "family_code": st.session_state.family_code,
         "dark_mode": st.session_state.dark_mode
     }
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
     
-    if st.session_state.cloud_sync_url:
+    # סינכרון ענן משפחתי לפי קוד שיתוף
+    if st.session_state.family_code:
         try:
-            requests.put(st.session_state.cloud_sync_url, json=data, timeout=2)
+            sync_url = f"https://jsonbin.org/v3/b/{st.session_state.family_code}"
+            requests.put(sync_url, json=data, timeout=2)
         except Exception:
             pass
 
 saved_data = load_data()
-if 'stores' not in st.session_state:
-    st.session_state.stores = saved_data.get("stores", {"סופרמרקט מרכזי": []})
-if 'active_store' not in st.session_state:
-    st.session_state.active_store = saved_data.get("active_store", "סופרמרקט מרכזי")
-if 'next_trip_list' not in st.session_state:
-    st.session_state.next_trip_list = saved_data["next_trip_list"]
-if 'purchase_history' not in st.session_state:
-    st.session_state.purchase_history = saved_data["purchase_history"]
-if 'budget' not in st.session_state:
-    st.session_state.budget = saved_data.get("budget", 300.0)
-if 'cloud_sync_url' not in st.session_state:
-    st.session_state.cloud_sync_url = saved_data.get("cloud_sync_url", "")
-if 'dark_mode' not in st.session_state:
-    st.session_state.dark_mode = saved_data.get("dark_mode", False)
+if 'stores' not in st.session_state: st.session_state.stores = saved_data.get("stores", {"סופרמרקט מרכזי": []})
+if 'active_store' not in st.session_state: st.session_state.active_store = saved_data.get("active_store", "סופרמרקט מרכזי")
+if 'next_trip_list' not in st.session_state: st.session_state.next_trip_list = saved_data["next_trip_list"]
+if 'purchase_history' not in st.session_state: st.session_state.purchase_history = saved_data["purchase_history"]
+if 'recurring_items' not in st.session_state: st.session_state.recurring_items = saved_data.get("recurring_items", [])
+if 'budget' not in st.session_state: st.session_state.budget = saved_data.get("budget", 300.0)
+if 'family_code' not in st.session_state: st.session_state.family_code = saved_data.get("family_code", "family123")
+if 'dark_mode' not in st.session_state: st.session_state.dark_mode = saved_data.get("dark_mode", False)
 
 if st.session_state.active_store not in st.session_state.stores:
     st.session_state.stores[st.session_state.active_store] = []
 
-# --- עיצוב דינמי (מצב בהיר / מצב כהה) ---
+# --- עיצוב דינמי (מצב בהיר / כהה) ---
 dark = st.session_state.dark_mode
 bg_color = "#0f172a" if dark else "#f7f9fb"
 card_bg = "#1e293b" if dark else "#ffffff"
@@ -103,14 +110,8 @@ st.markdown(f"""
         color: {text_color} !important;
     }}
 
-    .stApp {{
-        background-color: {bg_color};
-    }}
-
-    h1, h2, h3 {{
-        color: {text_color} !important;
-        font-weight: 800 !important;
-    }}
+    .stApp {{ background-color: {bg_color}; }}
+    h1, h2, h3 {{ color: {text_color} !important; font-weight: 800 !important; }}
 
     div[data-testid="metric-container"] {{
         background: {card_bg};
@@ -121,15 +122,8 @@ st.markdown(f"""
         text-align: center;
         border-right: 5px solid #3b82f6;
     }}
-    div[data-testid="metric-container"] label {{
-        color: {sub_text} !important;
-        font-size: 14px !important;
-    }}
-    div[data-testid="metric-container"] div[data-testid="stMetricValue"] {{
-        color: {text_color} !important;
-        font-size: 22px !important;
-        font-weight: 700 !important;
-    }}
+    div[data-testid="metric-container"] label {{ color: {sub_text} !important; font-size: 14px !important; }}
+    div[data-testid="metric-container"] div[data-testid="stMetricValue"] {{ color: {text_color} !important; font-size: 22px !important; font-weight: 700 !important; }}
 
     .product-card {{
         background-color: {card_bg};
@@ -141,29 +135,10 @@ st.markdown(f"""
         display: flex;
         align-items: center;
     }}
-    .product-name {{
-        font-size: 18px !important;
-        font-weight: 700 !important;
-        color: {text_color};
-    }}
-    .product-details {{
-        font-size: 13px;
-        color: {sub_text};
-    }}
+    .product-name {{ font-size: 18px !important; font-weight: 700 !important; color: {text_color}; }}
+    .product-details {{ font-size: 13px; color: {sub_text}; }}
 
-    .stButton>button {{
-        border-radius: 10px;
-        font-weight: 600;
-        transition: all 0.2s;
-        width: 100%;
-    }}
-
-    @media (max-width: 768px) {{
-        .stButton>button {{
-            font-size: 12px !important;
-            padding: 6px !important;
-        }}
-    }}
+    .stButton>button {{ border-radius: 10px; font-weight: 600; transition: all 0.2s; width: 100%; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -202,15 +177,13 @@ def ai_smart_categorize_and_price(item_name):
         "אורז": ("שימורים ויבשים", 10.0), "פסטה": ("שימורים ויבשים", 6.5), "שמן": ("שימורים ויבשים", 12.0),
         "קמח": ("שימורים ויבשים", 6.0), "סוכר": ("שימורים ויבשים", 6.5), "מלח": ("שימורים ויבשים", 3.5)
     }
-
     for key, (cat, price) in smart_db.items():
         if key == name_lower or key in name_lower:
             return cat, price
-
     return "שונות", 12.0
 
 # --- תפריט צד ---
-st.sidebar.title("🛒 ניהול קניות חכם")
+st.sidebar.title("🛒 ניהול קניות אולטימטיבי")
 st.sidebar.markdown("---")
 
 store_list = list(st.session_state.stores.keys())
@@ -234,10 +207,13 @@ st.sidebar.markdown("---")
 menu = st.sidebar.radio("תפריט ניווט:", [
     "🛒 רשימת קניות פעילה", 
     "➕ הוספת פריטים חכמה", 
-    "⭐ מוצרים מועדפים מהירים",
-    "📷 סריקת פתק/קבלה (AI)",
-    "📊 סטטיסטיקות ותקציב",
-    "⚙️ הגדרות וסינכרון ענן"
+    "⭐ מוצרים מועדפים",
+    "🗺️ סידור לפי מעברים",
+    "📸 סריקת ברקוד",
+    "🧮 השוואת מחירים (ליחידה)",
+    "🔄 פריטים קבועים (תזכורות)",
+    "📊 סטטיסטיקות וקבלות",
+    "⚙️ שיתוף משפחתי והגדרות"
 ], label_visibility="collapsed")
 
 st.sidebar.markdown("---")
@@ -274,14 +250,14 @@ if menu == "🛒 רשימת קניות פעילה":
     st.markdown("---")
 
     if not current_shopping_list:
-        st.info("💡 רשימת הקניות ריקה לחלוטין! אפשר להוסיף פריטים דרך התפריט בצד.")
+        st.info("💡 רשימת הקניות ריקה לחלוטין! הוסף פריטים דרך התפריט.")
     else:
         active_items = [i for i in current_shopping_list if not i['checked']]
         categories_in_list = sorted(list(set(i['category'] for i in active_items)))
         
         col_search, col_filter = st.columns([1.5, 2])
         with col_search:
-            search_query = st.text_input("🔍 חיפוש מהיר ברשימה:", "", placeholder="הקלד שם מוצר...")
+            search_query = st.text_input("🔍 חיפוש מהיר:", "", placeholder="הקלד שם מוצר...")
         with col_filter:
             selected_category_filter = st.selectbox("📂 סינון לפי מחלקה:", ["הכל (ללא סינון)"] + categories_in_list)
 
@@ -363,7 +339,7 @@ if menu == "🛒 רשימת קניות פעילה":
                             st.rerun()
 
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🏁 סיים קנייה ושמור היסטוריה", type="primary"):
+            if st.button("🏁 סיים קנייה ושמור קבלה", type="primary"):
                 trip_date = datetime.now().strftime("%Y-%m-%d %H:%M")
                 trip_total = sum(i['quantity'] * i['estimated_price'] for i in checked_items)
                 st.session_state.purchase_history.append({
@@ -374,7 +350,7 @@ if menu == "🛒 רשימת קניות פעילה":
                 })
                 st.session_state.stores[st.session_state.active_store] = [i for i in current_shopping_list if not i['checked']]
                 save_data()
-                st.success("הקנייה עודכנה בהצלחה ונשמרה בהיסטוריה!")
+                st.success("הקנייה נשמרה בהצלחה בהיסטוריית הקבלות!")
                 st.rerun()
 
 # ----------------------------------------------------
@@ -382,32 +358,23 @@ if menu == "🛒 רשימת קניות פעילה":
 # ----------------------------------------------------
 elif menu == "➕ הוספת פריטים חכמה":
     st.title("➕ הוספת פריט חדש")
-    
     with st.form("add_item_form"):
         item_name = st.text_input("שם הפריט (למשל: מלפפונים, קורנפלקס)")
         item_qty = st.number_input("כמות", min_value=1, value=1, step=1)
-        
         submit_btn = st.form_submit_button("הוסף לרשימה 🛒", type="primary")
-        
         if submit_btn:
             if item_name.strip():
                 category, estimated_price = ai_smart_categorize_and_price(item_name.strip())
-                current_shopping_list.append({
-                    "name": item_name.strip(),
-                    "quantity": item_qty,
-                    "category": category,
-                    "estimated_price": estimated_price,
-                    "checked": False
-                })
+                current_shopping_list.append({"name": item_name.strip(), "quantity": item_qty, "category": category, "estimated_price": estimated_price, "checked": False})
                 save_data()
                 st.success(f"הפריט '{item_name}' נוסף בהצלחה!")
             else:
                 st.warning("נא להזין שם פריט תקין.")
 
 # ----------------------------------------------------
-# 3. מוצרים מועדפים מהירים
+# 3. מוצרים מועדפים
 # ----------------------------------------------------
-elif menu == "⭐ מוצרים מועדפים מהירים":
+elif menu == "⭐ מוצרים מועדפים":
     st.title("⭐ מוצרים קבועים ומועדפים")
     for idx, fav in enumerate(FAVOURITES_DB):
         col_f_name, col_f_btn = st.columns([3, 1])
@@ -415,50 +382,119 @@ elif menu == "⭐ מוצרים מועדפים מהירים":
             st.write(f"**{fav['name']}** ({fav['category']}) - כ-₪{fav['estimated_price']}")
         with col_f_btn:
             if st.button("➕ הוסף", key=f"fav_{idx}"):
-                current_shopping_list.append({
-                    "name": fav['name'],
-                    "quantity": 1,
-                    "category": fav['category'],
-                    "estimated_price": fav['estimated_price'],
-                    "checked": False
-                })
+                current_shopping_list.append({"name": fav['name'], "quantity": 1, "category": fav['category'], "estimated_price": fav['estimated_price'], "checked": False})
                 save_data()
                 st.success(f"הפריט {fav['name']} נוסף!")
 
 # ----------------------------------------------------
-# 4. סריקת פתק/קבלה (AI Vision)
+# 4. סידור לפי מעברים
 # ----------------------------------------------------
-elif menu == "📷 סריקת פתק/קבלה (AI)":
-    st.title("📷 סריקת פתק או רשימה ידנית")
-    manual_ocr_input = st.text_input("הזן מוצרים (מופרדים בפסיקים):")
-    if st.button("הוסף את המוצרים לרשימה ✅", type="primary"):
-        if manual_ocr_input.strip():
-            for item_name in [i.strip() for i in manual_ocr_input.split(",") if i.strip()]:
-                cat, price = ai_smart_categorize_and_price(item_name)
-                current_shopping_list.append({"name": item_name, "quantity": 1, "category": cat, "estimated_price": price, "checked": False})
-            save_data()
-            st.success("הפריטים נוספו בהצלחה!")
+elif menu == "🗺️ סידור לפי מעברים":
+    st.title("🗺️ סידור הרשימה לפי מעברי הסופר")
+    st.write("הנה הרשימה שלך מסודרת אוטומטית לפי סדר ההליכה ההגיוני בחנות:")
+    
+    active_items = [i for i in current_shopping_list if not i['checked']]
+    sorted_items = sorted(active_items, key=lambda x: AISLE_ORDER.get(x['category'], 99))
+    
+    for item in sorted_items:
+        icon, _ = get_product_icon_and_color(item['category'])
+        st.markdown(f"• {icon} **{item['name']}** (כמות: {item['quantity']}) — מחלקה: *{item['category']}*")
 
 # ----------------------------------------------------
-# 5. סטטיסטיקות ותקציב
+# 5. סריקת ברקוד
 # ----------------------------------------------------
-elif menu == "📊 סטטיסטיקות ותקציב":
-    st.title("📊 סטטיסטיקות ותקציב קניות")
+elif menu == "📸 סריקת ברקוד":
+    st.title("📸 סריקת ברקוד מוצר")
+    st.write("הזן קוד ברקוד או תאר את המוצר להוספה מהירה:")
+    barcode_input = st.text_input("הקש מספר ברקוד או שם מוצר ספציפי:")
+    if st.button("הוסף מוצר בסריקה ✅", type="primary"):
+        if barcode_input.strip():
+            cat, price = ai_smart_categorize_and_price(barcode_input)
+            current_shopping_list.append({"name": barcode_input.strip(), "quantity": 1, "category": cat, "estimated_price": price, "checked": False})
+            save_data()
+            st.success("המוצר זוהה ונוסף בהצלחה!")
+
+# ----------------------------------------------------
+# 6. השוואת מחירים (ליחידה)
+# ----------------------------------------------------
+elif menu == "🧮 השוואת מחירים (ליחידה)":
+    st.title("🧮 מחשבון השוואת מחירים")
+    st.write("בדוק איזו אריזה באמת משתלמת יותר קנייה:")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.subheader("אריזה א'")
+        price_a = st.number_input("מחיר אריזה א' (₪):", min_value=0.0, value=10.0, key="pa")
+        amount_a = st.number_input("משקל/כמות (גרם/מ\"ל/יחידות):", min_value=0.1, value=500.0, key="aa")
+    with col_b:
+        st.subheader("אריזה ב'")
+        price_b = st.number_input("מחיר אריזה ב' (₪):", min_value=0.0, value=18.0, key="pb")
+        amount_b = st.number_input("משקל/כמות (גרם/מ\"ל/יחידות):", min_value=0.1, value=1000.0, key="ab")
+        
+    if amount_a > 0 and amount_b > 0:
+        unit_a = price_a / amount_a
+        unit_b = price_b / amount_b
+        st.markdown("---")
+        if unit_a < unit_b:
+            st.success("🏆 **אריזה א' משתלמת יותר!** (מחיר נמוך יותר ליחידת מידה)")
+        elif unit_b < unit_a:
+            st.success("🏆 **אריזה ב' משתלמת יותר!** (מחיר נמוך יותר ליחידת מידה)")
+        else:
+            st.info("🤝 שתי האריזות בעלות מחיר זהה ליחידת מידה.")
+
+# ----------------------------------------------------
+# 7. פריטים קבועים ותזכורות
+# ----------------------------------------------------
+elif menu == "🔄 פריטים קבועים (תזכורות)":
+    st.title("🔄 ניהול פריטים קבועים")
+    st.write("הגדר מוצרים שאתה קונה כל שבוע כדי להחזיר אותם לסל בלחיצה אחת:")
+    
+    new_rec = st.text_input("הוסף פריט קבוע רשימה (למשל: נייר טואלט):")
+    if st.button("שמור כפריט קבוע"):
+        if new_rec.strip() and new_rec not in st.session_state.recurring_items:
+            st.session_state.recurring_items.append(new_rec.strip())
+            save_data()
+            st.success("הפריט נוסף לרשימה הקבועה!")
+            
+    if st.session_state.recurring_items:
+        st.markdown("### הפריטים הקבועים שלך:")
+        for idx, rec in enumerate(st.session_state.recurring_items):
+            col_r1, col_r2 = st.columns([3, 1])
+            with col_r1:
+                st.write(f"• {rec}")
+            with col_r2:
+                if st.button("➕ הוסף לסל", key=f"add_rec_{idx}"):
+                    cat, price = ai_smart_categorize_and_price(rec)
+                    current_shopping_list.append({"name": rec, "quantity": 1, "category": cat, "estimated_price": price, "checked": False})
+                    save_data()
+                    st.success(f"הוסף לסל!")
+
+# ----------------------------------------------------
+# 8. סטטיסטיקות וקבלות
+# ----------------------------------------------------
+elif menu == "📊 סטטיסטיקות וקבלות":
+    st.title("📊 סטטיסטיקות והיסטוריית קבלות")
     new_budget = st.number_input("הגדר תקציב מקסימלי לקנייה (₪):", min_value=0.0, value=float(st.session_state.budget), step=50.0)
     if new_budget != st.session_state.budget:
         st.session_state.budget = new_budget
         save_data()
         st.success("התקציב עודכן!")
+        
+    st.markdown("---")
     if st.session_state.purchase_history:
         st.dataframe(pd.DataFrame(st.session_state.purchase_history), use_container_width=True)
+    else:
+        st.info("עדיין אין היסטוריית קניות שמורה.")
 
 # ----------------------------------------------------
-# 6. הגדרות וסינכרון ענן
+# 9. שיתוף משפחתי והגדרות
 # ----------------------------------------------------
-elif menu == "⚙️ הגדרות וסינכרון ענן":
-    st.title("⚙️ הגדרות וסינכרון משפחתי")
-    cloud_url_input = st.text_input("כתובת ענן (Webhook/JSONBin URL):", value=st.session_state.cloud_sync_url)
-    if st.button("שמור הגדרות ענן", type="primary"):
-        st.session_state.cloud_sync_url = cloud_url_input.strip()
+elif menu == "⚙️ שיתוף משפחתי והגדרות":
+    st.title("⚙️ שיתוף משפחתי בענן")
+    st.write("הכנס קוד שיתוף משפחתי כדי לסנכרן את הרשימות עם מכשירים אחרים:")
+    
+    code_input = st.text_input("קוד שיתוף משפחתי:", value=st.session_state.family_code)
+    if st.button("שמור קוד שיתוף", type="primary"):
+        st.session_state.family_code = code_input.strip()
         save_data()
-        st.success("הגדרות נשמרו!")
+        st.success("קוד השיתוף עודכן בהצלחה!")
