@@ -51,18 +51,20 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* כרטיס מוצר מעוצב */
+    /* כרטיס מוצר מעוצב עם תמונה קטנה */
     .product-card {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
-        padding: 14px 16px;
+        padding: 12px 16px;
         border-radius: 14px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         margin-bottom: 6px;
         border-right: 5px solid #10b981;
+        display: flex;
+        align-items: center;
     }
     .product-name {
-        font-size: 18px !important;
+        font-size: 17px !important;
         font-weight: 700 !important;
         color: #0f172a;
     }
@@ -99,6 +101,22 @@ FAVOURITES_DB = [
     {"name": "עגבניות", "category": "ירקות ופירות", "estimated_price": 12.0},
     {"name": "קוטג'", "category": "מוצרי חלב", "estimated_price": 6.8}
 ]
+
+# פונקציית עזר להצמדת אייקון/תמונה קטנה לפי שם המוצר
+def get_product_icon(item_name):
+    name = item_name.strip().lower()
+    if any(w in name for w in ["חלב", "שוקו"]): return "🥛"
+    if any(w in name for w in ["לחם", "חלה", "פיתה", "מאפה", "בורקס"]): return "🍞"
+    if any(w in name for w in ["ביצה", "ביצים"]): return "🥚"
+    if any(w in name for w in ["מלפפון", "עגבנייה", "ירק", "חסה", "פלפל", "בצל", "גזר"]): return "🥗"
+    if any(w in name for w in ["תפוח", "בננה", "פרי", "לימון", "אבוקדו", "תות"]): return "🍎"
+    if any(w in name for w in ["בשר", "עוף", "סטייק", "שניצל"]): return "🥩"
+    if any(w in name for w in ["דג", "סלמון", "טונה"]): return "🐟"
+    if any(w in name for w in ["גבינה", "קוטג", "יוגורט", "חמאה", "שמנת"]): return "🧀"
+    if any(w in name for w in ["נייר", "טישו", "ניקיון", "סבון", "אקונומיקה", "שמפו"]): return "🧻"
+    if any(w in name for w in ["שוקולד", "במבה", "ביסלי", "עוגיות", "חטיף"]): return "🍫"
+    if any(w in name for w in ["קפה", "תה", "סוכר", "קמח", "אורז", "פסטה", "שמן"]): return "☕"
+    return "🛒"
 
 def ai_smart_categorize_and_price(item_name):
     name_lower = item_name.strip().lower()
@@ -240,11 +258,16 @@ if menu == "🛒 רשימת קניות פעילה":
                 if selected_category_filter != "הכל (ללא סינון)" and item['category'] != selected_category_filter:
                     continue
 
+                item_icon = get_product_icon(item['name'])
+
                 with st.container():
                     st.markdown(f"""
                     <div class="product-card">
-                        <span class="product-name">{item['name']}</span> &nbsp;|&nbsp; <b>כמות: {item['quantity']}</b><br>
-                        <span class="product-details">מחיר משוער: <b>₪{item['quantity'] * item['estimated_price']:.2f}</b> &nbsp;&bull;&nbsp; קטגוריה: {item['category']}</span>
+                        <span style="font-size: 24px; margin-left: 10px;">{item_icon}</span>
+                        <div>
+                            <span class="product-name">{item['name']}</span> &nbsp;|&nbsp; <b>כמות: {item['quantity']}</b><br>
+                            <span class="product-details">מחיר משוער: <b>₪{item['quantity'] * item['estimated_price']:.2f}</b> &nbsp;&bull;&nbsp; קטגוריה: {item['category']}</span>
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
                     
