@@ -11,7 +11,7 @@ from PIL import Image
 # הגדרת עמוד האפליקציה
 st.set_page_config(page_title="ניהול קניות חכם ומתקדם", page_icon="🛒", layout="centered")
 
-# עיצוב מותאם לעברית (RTL) וטבלה בסגנון אקסל עם מוצרים מודגשים וגדולים
+# עיצוב מותאם לעברית (RTL), קיבוע תפריט הניווט, וטבלה בסגנון אקסל
 st.markdown("""
 <style>
     body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox {
@@ -24,6 +24,16 @@ st.markdown("""
         padding: 10px;
         border-radius: 10px;
         text-align: center;
+    }
+    /* תיקון קריטי: מניעת תקיעת תפריט הניווט במרכז המסך בנייד */
+    [data-testid="stSidebar"] {
+        right: 0 !important;
+        left: auto !important;
+    }
+    @media (max-width: 768px) {
+        [data-testid="stSidebar"] {
+            width: 75% !important;
+        }
     }
     /* עיצוב טבלה בסגנון אקסל מדויק לנייד */
     .excel-table {
@@ -231,11 +241,11 @@ if menu == "🛒 רשימת הקניות לסופר" or menu == "🛒 רשימת
                 st.markdown(f"""
                 <table class="excel-table">
                     <tr>
-                        <td style="width: 8%; text-align: center;" id="chk_{idx}"></td>
+                        <td style="width: 8%; text-align: center;"></td>
                         <td style="width: 34%;"><span class="product-name">{item['name']}</span><br><small>כמות: {item['quantity']}</small></td>
-                        <td style="width: 25%;" id="cat_{idx}"></td>
+                        <td style="width: 25%;"></td>
                         <td style="width: 15%; text-align: center;"><b>₪{item['quantity'] * item['estimated_price']:.2f}</b></td>
-                        <td style="width: 18%; text-align: center;" id="btns_{idx}"></td>
+                        <td style="width: 18%; text-align: center;"></td>
                     </tr>
                 </table>
                 """, unsafe_allow_html=True)
