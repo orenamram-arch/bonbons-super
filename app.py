@@ -9,7 +9,7 @@ from PIL import Image
 # הגדרת עמוד האפליקציה
 st.set_page_config(page_title="ניהול קניות חכם", page_icon="🛒", layout="centered")
 
-# עיצוב מתקדם ומודרני (Modern UI & RTL) ותיקון תצוגת סרגל הצד
+# עיצוב מתקדם ומודרני (Modern UI & RTL) - ניקוי מלא של ה-Checkboxes ושמירה על יישור מושלם
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
@@ -58,7 +58,7 @@ st.markdown("""
         padding: 14px 16px;
         border-radius: 14px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        margin-bottom: 8px;
+        margin-bottom: 6px;
         border-right: 5px solid #10b981;
     }
     .product-name {
@@ -76,12 +76,12 @@ st.markdown("""
         border-radius: 10px;
         font-weight: 600;
         transition: all 0.2s;
+        width: 100%;
     }
 
     /* התאמה למסכי טלפון נייד */
     @media (max-width: 768px) {
         .stButton>button {
-            width: 100%;
             font-size: 12px !important;
             padding: 6px !important;
         }
@@ -191,7 +191,7 @@ if 'budget' not in st.session_state:
 if 'cloud_sync_url' not in st.session_state:
     st.session_state.cloud_sync_url = saved_data.get("cloud_sync_url", "")
 
-# תפריט ניווט נקי בסרגל הצד (ללא כותרות ארוכות שנמרχות)
+# תפריט ניווט נקי בסרגל הצד
 menu = st.sidebar.radio("תפריט:", [
     "🛒 רשימת קניות פעילה", 
     "➕ הוספת פריטים חכמה", 
@@ -248,11 +248,11 @@ if menu == "🛒 רשימת קניות פעילה":
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    col_chk, col_cat, col_mis, col_del = st.columns([1, 2.2, 1, 1])
-                    with col_chk:
-                        checked = st.checkbox("V", key=f"check_{idx}", value=item['checked'])
-                        if checked != item['checked']:
-                            st.session_state.shopping_list[idx]['checked'] = checked
+                    # שימוש בכפתורי פעולה נקיים במקום Checkboxes
+                    col_buy, col_cat, col_mis, col_del = st.columns([1.2, 2.2, 1, 1])
+                    with col_buy:
+                        if st.button("✔️ נקנה", key=f"buy_{idx}", type="primary"):
+                            st.session_state.shopping_list[idx]['checked'] = True
                             save_data()
                             st.rerun()
                     with col_cat:
@@ -278,7 +278,7 @@ if menu == "🛒 רשימת קניות פעילה":
                             st.session_state.shopping_list.pop(idx)
                             save_data()
                             st.rerun()
-                st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+                st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
 
         checked_items = [i for i in st.session_state.shopping_list if i['checked']]
         if checked_items:
