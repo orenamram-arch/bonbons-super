@@ -81,7 +81,7 @@ if 'dark_mode' not in st.session_state: st.session_state.dark_mode = saved_data.
 if st.session_state.active_store not in st.session_state.stores:
     st.session_state.stores[st.session_state.active_store] = []
 
-# --- עיצוב דינמי (מצב בהיר / כהה) והעלמת תפריטים אוטומטיים מיותרים ---
+# --- עיצוב דינמי והעלמה מוחלטת של הוילון ותפריט הצד ---
 dark = st.session_state.dark_mode
 bg_color = "#0f172a" if dark else "#f7f9fb"
 card_bg = "#1e293b" if dark else "#ffffff"
@@ -93,8 +93,8 @@ st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
 
-    /* הסתרה מוחלטת של תפריטי ניווט אוטומטיים שמופיעים באמצע או בצד */
-    [data-testid="stSidebarNav"], div[data-testid="stToolbar"], header {{
+    /* הסתרה מוחלטת של סרגל הצד, כפתור הוילון, התפריטים והכותרת העליונה של Streamlit */
+    [data-testid="stSidebar"], [data-testid="collapsedControl"], header, [data-testid="stToolbar"] {{
         display: none !important;
     }}
 
@@ -177,34 +177,9 @@ def ai_smart_categorize_and_price(item_name):
             return cat, price
     return "שונות", 12.0
 
-# --- הגדרות סרגל צד נקיות בלבד ---
-st.sidebar.title("⚙️ הגדרות מהירות")
-store_list = list(st.session_state.stores.keys())
-selected_store = st.sidebar.selectbox("🏪 בחר חנות / רשימה:", store_list, index=store_list.index(st.session_state.active_store))
-if selected_store != st.session_state.active_store:
-    st.session_state.active_store = selected_store
-    save_data()
-    st.rerun()
-
-new_store_name = st.sidebar.text_input("➕ הוסף חנות חדשה:")
-if st.sidebar.button("צור חנות"):
-    if new_store_name.strip() and new_store_name not in st.session_state.stores:
-        st.session_state.stores[new_store_name.strip()] = []
-        st.session_state.active_store = new_store_name.strip()
-        save_data()
-        st.success("החנות נוספה!")
-        st.rerun()
-
-st.sidebar.markdown("---")
-dark_mode_toggle = st.sidebar.toggle("🌙 מצב כהה (Dark Mode)", value=st.session_state.dark_mode)
-if dark_mode_toggle != st.session_state.dark_mode:
-    st.session_state.dark_mode = dark_mode_toggle
-    save_data()
-    st.rerun()
-
 current_shopping_list = st.session_state.stores[st.session_state.active_store]
 
-# --- ניהול ראשי דרך כרטיסיות (Tabs) נקיות בראש המסך ---
+# --- ניהול ראשי דרך כרטיסיות (Tabs) נקיות בלבד ---
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🛒 רשימה פעילה", 
     "➕ הוספה חכמה", 
@@ -219,6 +194,22 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 # 1. רשימת קניות פעילה
 # ----------------------------------------------------
 with tab1:
+    # פס בחירת חנות ומצב כהה מהיר בראש העמוד (במקום סרגל צד)
+    col_top1, col_top2 = st.columns([2, 1])
+    with col_top1:
+        store_list = list(st.session_state.stores.keys())
+        selected_store = st.selectbox("🏪 בחר חנות:", store_list, index=store_list.index(st.session_state.active_store))
+        if selected_store != st.session_state.active_store:
+            st.session_state.active_store = selected_store
+            save_data()
+            st.rerun()
+    with col_top2:
+        dark_toggle = st.toggle("🌙 כהה", value=st.session_state.dark_mode)
+        if dark_toggle != st.session_state.dark_mode:
+            st.session_state.dark_mode = dark_toggle
+            save_data()
+            st.rerun()
+
     st.title(f"🛒 רשימה עבור: {st.session_state.active_store}")
     
     total_cost = sum(item['quantity'] * item['estimated_price'] for item in current_shopping_list if not item['checked'])
