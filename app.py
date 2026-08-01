@@ -73,8 +73,8 @@ def save_data():
 saved_data = load_data()
 if 'stores' not in st.session_state: st.session_state.stores = saved_data.get("stores", {"סופרמרקט מרכזי": []})
 if 'active_store' not in st.session_state: st.session_state.active_store = saved_data.get("active_store", "סופרמרקט מרכזי")
-if 'next_trip_list' not in st.session_state: st.session_state.next_trip_list = saved_data["next_trip_list"]
-if 'purchase_history' not in st.session_state: st.session_state.purchase_history = saved_data["purchase_history"]
+if 'next_trip_list' not in st.session_state: st.session_state.next_trip_list = saved_data.get("next_trip_list", [])
+if 'purchase_history' not in st.session_state: st.session_state.purchase_history = saved_data.get("purchase_history", [])
 if 'recurring_items' not in st.session_state: st.session_state.recurring_items = saved_data.get("recurring_items", [])
 if 'learned_categories' not in st.session_state: st.session_state.learned_categories = saved_data.get("learned_categories", {})
 if 'all_purchased_items' not in st.session_state: st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
@@ -190,7 +190,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "⭐ מועדפים",
     "🗺️ סידור",
     "🧮 השוואה",
-    "🔄 קבועים",
+    "🛍️ לקנייה הבאה",
     "📊 קבלות",
     "🏪 חנויות"
 ])
@@ -273,6 +273,7 @@ with tab1:
                             curr_state = st.session_state.get(f"show_edit_shop_{idx}", False)
                             st.session_state[f"show_edit_shop_{idx}"] = not curr_state
                     with col_mis:
+                        # ❌ מעביר אוטומטית לרשימת הפריטים החסרים לקנייה הבאה
                         if st.button("❌ חסר", key=f"missing_{idx}"):
                             st.session_state.next_trip_list.append(item)
                             current_shopping_list.pop(idx)
@@ -338,17 +339,14 @@ with tab1:
                 st.rerun()
 
 # ----------------------------------------------------
-# 2. הוספת פריט ידנית (עם מחיקת הודעה אוטומטית אחרי 3 שניות)
+# 2. הוספת פריט ידנית (עם אינדיקציית הצלחה שנעלמת אחרי 3 שניות)
 # ----------------------------------------------------
 with tab2:
     st.subheader("➕ הוספת פריט ידנית")
     
-    # הצגת אינדיקציה זמנית אם קיימת
     if st.session_state.get('last_added_item'):
         last = st.session_state.last_added_item
         st.success(f"✅ נוסף בהצלחה: **{last['name']}** (כמות: {last['qty']}) | מחלקה: {last['cat']} | מחיר משוער: ₪{last['price']:.2f}")
-        
-        # השהייה של 3 שניות ואז איפוס ההודעה כדי שלא תישארא קבועה
         time.sleep(3)
         st.session_state.pop('last_added_item', None)
         st.rerun()
@@ -385,7 +383,6 @@ with tab2:
 
                 save_data()
                 
-                # שמירת האינדיקציה הזמנית
                 st.session_state.last_added_item = {
                     "name": final_name,
                     "qty": item_qty,
@@ -448,25 +445,39 @@ with tab5:
         else: st.info("המחיר ליחידה זהה.")
 
 # ----------------------------------------------------
-# 6. מוצרים קבועים
+# 6. לקנייה הבאה (ניהול פריטים שסומנו כ"חסרים")
 # ----------------------------------------------------
 with tab6:
-    st.subheader("🔄 מוצרים קבועים בבית")
-    new_rec = st.text_input("הוסף פריט קבוע:")
-    if st.button("שמור"):
-        if new_rec.strip() and new_rec not in st.session_state.recurring_items:
-            st.session_state.recurring_items.append(new_rec.strip())
+    st.subheader("🛍️ פריטים שהוגדרו כחסרים (לקנייה הבאה)")
+    st.write("כאן מופיעים פריטים שסימנת כ'חסר' בסופר. תוכל להחזיר אותם לרשימה הפעילה לקראת הקנייה הבאה:")
+    
+    if not st.session_state.next_trip_list:
+        st.info("אין פריטים חסרים כרגע.")
+    else:
+        for idx, item in enumerate(st.session_state.next_trip_list):
+            col_n, col_add_back, col_rem_next = st.columns([3, 1.2, 1])
+            col_n.write(f"• **{item['name']}** (כמות: {item['quantity']}, מחלקה: {item['category']})")
+            
+            if col_add_back.button("➕ החזר לסל", key=f"add_back_{idx}"):
+                current_shopping_list.append(item)
+                st.session_state.next_trip_list.pop(idx)
+                save_data()
+                st.success("הפריט הוחזר לרשימה הפעילה!")
+                st.rerun()
+                
+            if col_rem_next.button("🗑️ הסר", key=f"rem_next_{idx}"):
+                st.session_state.next_trip_list.pop(idx)
+                save_data()
+                st.rerun()
+                
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 העבר את כל הפריטים החסרים לסל הפעיל", type="primary"):
+            for item in st.session_state.next_trip_list:
+                current_shopping_list.append(item)
+            st.session_state.next_trip_list = []
             save_data()
-    for idx, rec in enumerate(st.session_state.recurring_items):
-        c1, c2 = st.columns([3, 1])
-        c1.write(f"• {rec}")
-        if c2.button("➕ לסל", key=f"r_{idx}"):
-            cat, price = ai_smart_categorize_and_price(rec)
-            current_shopping_list.append({"name": rec, "quantity": 1, "category": cat, "estimated_price": price, "checked": False})
-            if rec not in st.session_state.all_purchased_items:
-                st.session_state.all_purchased_items.append(rec)
-            save_data()
-            st.success(f"הפריט '{rec}' נוסף לסל!")
+            st.success("כל הפריטים הוחזרו לרשימת הקניות הפעילה!")
+            st.rerun()
 
 # ----------------------------------------------------
 # 7. קבלות והיסטוריה
