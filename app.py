@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import json
 import os
+import time
 
 # הגדרת עמוד האפליקציה (חייב להיות ראשון)
 st.set_page_config(page_title="ניהול קניות אולטימטיבי", page_icon="🛒", layout="centered")
@@ -192,7 +193,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 ])
 
 # ----------------------------------------------------
-# 1. רשימת קניות פעילה (כולל עריכה ותיקון קטגוריה)
+# 1. רשימת קניות פעילה
 # ----------------------------------------------------
 with tab1:
     store_list = list(st.session_state.stores.keys())
@@ -280,13 +281,11 @@ with tab1:
                             save_data()
                             st.rerun()
 
-                # טופס עריכה ותיקון קטגוריה במידת הצורך
                 if st.session_state.get(f"show_edit_shop_{idx}", False):
                     with st.container():
                         with st.form(f"form_edit_item_{idx}"):
                             e_name = st.text_input("שם הפריט:", value=item['name'])
                             e_price = st.number_input("מחיר משוער ליחידה (₪):", value=float(item['estimated_price']))
-                            # אופציה לתקן את הקטגוריה שה-AI הגדיר
                             current_cat_index = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 7
                             e_category = st.selectbox("תקן קטגוריה (אם ה-AI טעה):", CATEGORIES, index=current_cat_index)
                             
@@ -332,15 +331,20 @@ with tab1:
                 st.rerun()
 
 # ----------------------------------------------------
-# 2. הוספת פריט ידנית (עם AI משולב ומעבר אוטומטי)
+# 2. הוספת פריט ידנית (עם אינדיקציה חזותית ברורה)
 # ----------------------------------------------------
 with tab2:
     st.subheader("➕ הוספת פריט ידנית")
+    
+    # הצגת אינדיקציה אם פריט נוסף זה עתה
+    if st.session_state.get('last_added_item'):
+        last = st.session_state.last_added_item
+        st.success(f"✅ נוסף בהצלחה: **{last['name']}** (כמות: {last['qty']}) | מחלקה: {last['cat']} | מחיר משוער: ₪{last['price']:.2f}")
+
     with st.form("add_item_form"):
         item_name = st.text_input("שם הפריט (ה-AI יזהה לבד קטגוריה ומחיר בישראל):")
         item_qty = st.number_input("כמות", min_value=1, value=1)
         if st.form_submit_button("הוסף לרשימה 🛒", type="primary") and item_name.strip():
-            # זיהוי חכם של קטגוריה ומחיר משוער בישראל
             category, price = ai_smart_categorize_and_price(item_name.strip())
             current_shopping_list.append({
                 "name": item_name.strip(), 
@@ -350,12 +354,15 @@ with tab2:
                 "checked": False
             })
             save_data()
-            st.session_state.item_added_success = True
-
-    if st.session_state.get('item_added_success', False):
-        st.session_state.item_added_success = False
-        st.success("הפריט נוסף בהצלחה!")
-        st.rerun()
+            
+            # שמירת פרטי הפריט האחרון להצגת אינדיקציה
+            st.session_state.last_added_item = {
+                "name": item_name.strip(),
+                "qty": item_qty,
+                "cat": category,
+                "price": price
+            }
+            st.rerun()
 
 # ----------------------------------------------------
 # 3. מועדפים
@@ -374,7 +381,7 @@ with tab3:
                 "checked": False
             })
             save_data()
-            st.success("נוסף לסל!")
+            st.success(f"נוסף בהצלחה: {fav['name']}!")
 
 # ----------------------------------------------------
 # 4. סידור מסלול
@@ -423,6 +430,7 @@ with tab6:
             cat, price = ai_smart_categorize_and_price(rec)
             current_shopping_list.append({"name": rec, "quantity": 1, "category": cat, "estimated_price": price, "checked": False})
             save_data()
+            st.success(f"הפריט '{rec}' נוסף לסל!")
 
 # ----------------------------------------------------
 # 7. קבלות והיסטוריה
