@@ -52,7 +52,7 @@ def load_data():
         "learned_categories": {},
         "all_purchased_items": [],
         "budget": 300.0,
-        "dark_mode": False
+        "theme_mode": "אוטומטי (לפי שעה)" # הגדרת מצב ברירת מחדל לתצוגה
     }
 
 def save_data():
@@ -65,7 +65,7 @@ def save_data():
         "learned_categories": st.session_state.learned_categories,
         "all_purchased_items": st.session_state.all_purchased_items,
         "budget": st.session_state.budget,
-        "dark_mode": st.session_state.dark_mode
+        "theme_mode": st.session_state.theme_mode # שמירת בחירת התצוגה של המשתמש
     }
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -79,19 +79,30 @@ if 'recurring_items' not in st.session_state: st.session_state.recurring_items =
 if 'learned_categories' not in st.session_state: st.session_state.learned_categories = saved_data.get("learned_categories", {})
 if 'all_purchased_items' not in st.session_state: st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
 if 'budget' not in st.session_state: st.session_state.budget = saved_data.get("budget", 300.0)
-if 'dark_mode' not in st.session_state: st.session_state.dark_mode = saved_data.get("dark_mode", False)
+if 'theme_mode' not in st.session_state: st.session_state.theme_mode = saved_data.get("theme_mode", "אוטומטי (לפי שעה)")
 
 if st.session_state.active_store not in st.session_state.stores:
     st.session_state.stores[st.session_state.active_store] = []
 
-# --- עיצוב דינמי והעלמה מוחלטת של הוילון ותפריט הצד ---
-dark = st.session_state.dark_mode
+# --- מנגנון תצוגה חכם (מצב לילה/יום) ---
+current_hour = datetime.now().hour
+is_night = current_hour >= 18 or current_hour < 6 # נחשב לילה מהשעה 18:00 בערב עד 06:00 בבוקר
+
+if st.session_state.theme_mode == "אוטומטי (לפי שעה)":
+    dark = is_night
+elif st.session_state.theme_mode == "כהה":
+    dark = True
+else:
+    dark = False
+
+# הגדרת הצבעים בהתאם למצב שנבחר
 bg_color = "#0f172a" if dark else "#f7f9fb"
 card_bg = "#1e293b" if dark else "#ffffff"
 text_color = "#f8fafc" if dark else "#0f172a"
 sub_text = "#94a3b8" if dark else "#64748b"
 border_color = "#334155" if dark else "#e2e8f0"
 
+# --- עיצוב דינמי והעלמה מוחלטת של הוילון ותפריט הצד ---
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
@@ -100,7 +111,7 @@ st.markdown(f"""
         display: none !important;
     }}
 
-    body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox {{
+    body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox, .stRadio {{
         direction: rtl;
         text-align: right;
         font-family: 'Assistant', sans-serif !important;
@@ -192,7 +203,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🧮 השוואה",
     "🛍️ לקנייה הבאה",
     "📊 קבלות",
-    "🏪 חנויות"
+    "🏪 הגדרות" # שיניתי את השם מעט כדי שיתאים גם לתצוגה
 ])
 
 # ----------------------------------------------------
@@ -529,10 +540,19 @@ with tab8:
         else:
             st.error("חייבת להישאר לפחות חנות אחת פעילה באפליקציה.")
 
+    # --- מנגנון בחירת תצוגה מעודכן ---
     st.markdown("---")
     st.subheader("🌙 תצוגה ועיצוב")
-    dark_toggle = st.toggle("הפעל מצב כהה (Dark Mode)", value=st.session_state.dark_mode)
-    if dark_toggle != st.session_state.dark_mode:
-        st.session_state.dark_mode = dark_toggle
+    
+    theme_options = ["אוטומטי (לפי שעה)", "בהיר", "כהה"]
+    selected_theme = st.radio(
+        "בחר מצב תצוגה:", 
+        theme_options, 
+        index=theme_options.index(st.session_state.theme_mode),
+        horizontal=True
+    )
+    
+    if selected_theme != st.session_state.theme_mode:
+        st.session_state.theme_mode = selected_theme
         save_data()
         st.rerun()
