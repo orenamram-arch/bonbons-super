@@ -152,7 +152,6 @@ def get_product_icon_and_color(category):
 def ai_smart_categorize_and_price(item_name):
     clean_name = item_name.strip().lower()
     
-    # 1. בדיקה האם המערכת למדה את הפריט מהתיקון שלך
     if clean_name in st.session_state.learned_categories:
         return st.session_state.learned_categories[clean_name], 12.0
 
@@ -285,14 +284,13 @@ with tab1:
                             save_data()
                             st.rerun()
 
-                # תיקון קטגוריה ושמירה מיידית לקובץ
                 if st.session_state.get(f"show_edit_shop_{idx}", False):
                     with st.container():
                         with st.form(f"form_edit_item_{idx}"):
                             e_name = st.text_input("שם הפריט:", value=item['name'])
                             e_price = st.number_input("מחיר משוער ליחידה (₪):", value=float(item['estimated_price']))
                             current_cat_index = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 7
-                            e_category = st.selectbox("תקן קטגוריה (המערכת תלמיד ותשמור לפעמים הבאות):", CATEGORIES, index=current_cat_index)
+                            e_category = st.selectbox("תקן קטגוריה (המערכת תלמד ותשמור לפעמים הבאות):", CATEGORIES, index=current_cat_index)
                             
                             if st.form_submit_button("שמור שינויים", type="primary"):
                                 new_name_clean = e_name.strip()
@@ -300,7 +298,6 @@ with tab1:
                                 current_shopping_list[idx]['estimated_price'] = e_price
                                 current_shopping_list[idx]['category'] = e_category
                                 
-                                # 🧠 שמירה בזיכרון המערכת ושמירה מיידית לקובץ הנתונים
                                 st.session_state.learned_categories[new_name_clean.lower()] = e_category
                                 save_data() 
                                 
@@ -341,17 +338,22 @@ with tab1:
                 st.rerun()
 
 # ----------------------------------------------------
-# 2. הוספת פריט ידנית (עם בורר השלמה אוטומטית חכם)
+# 2. הוספת פריט ידנית (עם מחיקת הודעה אוטומטית אחרי 3 שניות)
 # ----------------------------------------------------
 with tab2:
     st.subheader("➕ הוספת פריט ידנית")
     
+    # הצגת אינדיקציה זמנית אם קיימת
     if st.session_state.get('last_added_item'):
         last = st.session_state.last_added_item
         st.success(f"✅ נוסף בהצלחה: **{last['name']}** (כמות: {last['qty']}) | מחלקה: {last['cat']} | מחיר משוער: ₪{last['price']:.2f}")
+        
+        # השהייה של 3 שניות ואז איפוס ההודעה כדי שלא תישארא קבועה
+        time.sleep(3)
+        st.session_state.pop('last_added_item', None)
+        st.rerun()
 
     with st.form("add_item_form"):
-        # איסוף כל הפריטים שהתווספו אי פעם להיסטוריה + ברירת מחדל
         known_items = sorted(list(set(st.session_state.all_purchased_items)))
         
         st.write("בחר פריט מתוך ההיסטוריה שלמדת או הקלד פריט חדש:")
@@ -361,7 +363,6 @@ with tab2:
         item_qty = st.number_input("כמות", min_value=1, value=1)
         
         if st.form_submit_button("הוסף לרשימה 🛒", type="primary"):
-            # קביעת שם הפריט לפי מה שהמשתמש בחר או הקליד
             final_name = ""
             if manual_item_name.strip():
                 final_name = manual_item_name.strip()
@@ -384,6 +385,7 @@ with tab2:
 
                 save_data()
                 
+                # שמירת האינדיקציה הזמנית
                 st.session_state.last_added_item = {
                     "name": final_name,
                     "qty": item_qty,
