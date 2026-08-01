@@ -146,13 +146,31 @@ def get_product_icon_and_color(category):
 def ai_smart_categorize_and_price(item_name):
     name_lower = item_name.strip().lower()
     smart_db = {
+        # ירקות ופירות
         "מלפפון": ("ירקות ופירות", 10.0), "עגבנייה": ("ירקות ופירות", 12.0),
         "תפוח": ("ירקות ופירות", 14.0), "בננה": ("ירקות ופירות", 10.0),
+        "בצל": ("ירקות ופירות", 6.0), "תפוח אדמה": ("ירקות ופירות", 7.0),
+        "גזר": ("ירקות ופירות", 6.5), "לימון": ("ירקות ופירות", 9.0),
+        # מוצרי חלב
         "חלב": ("מוצרי חלב", 7.2), "גבינה": ("מוצרי חלב", 6.8),
-        "ביצים": ("מוצרי חלב", 14.0), "עוף": ("בשר ודגים", 35.0),
+        "ביצים": ("מוצרי חלב", 14.0), "קוטג'": ("מוצרי חלב", 6.8),
+        "גבינה צהובה": ("מוצרי חלב", 32.0), "יוגורט": ("מוצרי חלב", 4.5),
+        # בשר ודגים
+        "עוף": ("בשר ודגים", 35.0), "בקר": ("בשר ודגים", 55.0),
+        "סלמון": ("בשר ודגים", 90.0), "טונה": ("בשר ודגים", 8.0),
+        # מאפים
         "לחם": ("מאפים", 8.5), "פיתות": ("מאפים", 15.0),
+        "חלה": ("מאפים", 7.0), "בורקס": ("מאפים", 25.0),
+        # חומרי ניקוי
         "שמפו": ("חומרי ניקוי", 18.0), "נייר טואלט": ("חומרי ניקוי", 32.0),
-        "אורז": ("שימורים ויבשים", 10.0), "שמן": ("שימורים ויבשים", 12.0)
+        "אבקת כביסה": ("חומרי ניקוי", 29.0), "נוזל כלים": ("חומרי ניקוי", 8.5),
+        # שימורים ויבשים
+        "אורז": ("שימורים ויבשים", 10.0), "שמן": ("שימורים ויבשים", 12.0),
+        "קמח": ("שימורים ויבשים", 6.0), "סוכר": ("שימורים ויבשים", 6.5),
+        "קפה": ("שימורים ויבשים", 35.0), "פסטה": ("שימורים ויבשים", 6.0),
+        # חטיפים וממתקים
+        "שוקולד": ("חטיפים וממתקים", 6.5), "במבה": ("חטיפים וממתקים", 4.5),
+        "ביסלי": ("חטיפים וממתקים", 4.5), "עוגיות": ("חטיפים וממתקים", 10.0)
     }
     for key, (cat, price) in smart_db.items():
         if key in name_lower:
@@ -161,8 +179,7 @@ def ai_smart_categorize_and_price(item_name):
 
 current_shopping_list = st.session_state.stores[st.session_state.active_store]
 
-# --- ניהול ראשי דרך כרטיסיות (Tabs) נקיות בלבד ---
-# קיצרנו את השמות כדי שייכנסו יפה במסך
+# --- ניהול ראשי דרך כרטיסיות (Tabs) ---
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🛒 רשימה", 
     "➕ הוספה", 
@@ -175,10 +192,9 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 ])
 
 # ----------------------------------------------------
-# 1. רשימת קניות פעילה
+# 1. רשימת קניות פעילה (כולל עריכה ותיקון קטגוריה)
 # ----------------------------------------------------
 with tab1:
-    # בחירת חנות מהירה
     store_list = list(st.session_state.stores.keys())
     selected_store = st.selectbox("🏪 חנות פעילה כרגע:", store_list, index=store_list.index(st.session_state.active_store))
     if selected_store != st.session_state.active_store:
@@ -231,7 +247,7 @@ with tab1:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    col_buy, col_minus, col_plus, col_mis, col_del = st.columns([1.2, 0.7, 0.7, 1, 1])
+                    col_buy, col_minus, col_plus, col_edit, col_mis, col_del = st.columns([1.1, 0.6, 0.6, 1, 0.9, 0.9])
                     with col_buy:
                         if st.button("✔️ נקנה", key=f"buy_{idx}", type="primary"):
                             current_shopping_list[idx]['checked'] = True
@@ -248,6 +264,10 @@ with tab1:
                             current_shopping_list[idx]['quantity'] += 1
                             save_data()
                             st.rerun()
+                    with col_edit:
+                        if st.button("✏️ עריכה", key=f"edit_btn_{idx}"):
+                            curr_state = st.session_state.get(f"show_edit_shop_{idx}", False)
+                            st.session_state[f"show_edit_shop_{idx}"] = not curr_state
                     with col_mis:
                         if st.button("❌ חסר", key=f"missing_{idx}"):
                             st.session_state.next_trip_list.append(item)
@@ -259,6 +279,26 @@ with tab1:
                             current_shopping_list.pop(idx)
                             save_data()
                             st.rerun()
+
+                # טופס עריכה ותיקון קטגוריה במידת הצורך
+                if st.session_state.get(f"show_edit_shop_{idx}", False):
+                    with st.container():
+                        with st.form(f"form_edit_item_{idx}"):
+                            e_name = st.text_input("שם הפריט:", value=item['name'])
+                            e_price = st.number_input("מחיר משוער ליחידה (₪):", value=float(item['estimated_price']))
+                            # אופציה לתקן את הקטגוריה שה-AI הגדיר
+                            current_cat_index = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 7
+                            e_category = st.selectbox("תקן קטגוריה (אם ה-AI טעה):", CATEGORIES, index=current_cat_index)
+                            
+                            if st.form_submit_button("שמור שינויים", type="primary"):
+                                current_shopping_list[idx]['name'] = e_name.strip()
+                                current_shopping_list[idx]['estimated_price'] = e_price
+                                current_shopping_list[idx]['category'] = e_category
+                                st.session_state[f"show_edit_shop_{idx}"] = False
+                                save_data()
+                                st.success("השינויים נשמרו!")
+                                st.rerun()
+
                 st.markdown("<div style='margin-bottom: 6px;'></div>", unsafe_allow_html=True)
 
         checked_items = [i for i in current_shopping_list if i['checked']]
@@ -292,14 +332,117 @@ with tab1:
                 st.rerun()
 
 # ----------------------------------------------------
-# 8. ניהול חנויות והגדרות (המסך החדש!)
+# 2. הוספת פריט ידנית (עם AI משולב ומעבר אוטומטי)
+# ----------------------------------------------------
+with tab2:
+    st.subheader("➕ הוספת פריט ידנית")
+    with st.form("add_item_form"):
+        item_name = st.text_input("שם הפריט (ה-AI יזהה לבד קטגוריה ומחיר בישראל):")
+        item_qty = st.number_input("כמות", min_value=1, value=1)
+        if st.form_submit_button("הוסף לרשימה 🛒", type="primary") and item_name.strip():
+            # זיהוי חכם של קטגוריה ומחיר משוער בישראל
+            category, price = ai_smart_categorize_and_price(item_name.strip())
+            current_shopping_list.append({
+                "name": item_name.strip(), 
+                "quantity": item_qty, 
+                "category": category, 
+                "estimated_price": price, 
+                "checked": False
+            })
+            save_data()
+            st.session_state.item_added_success = True
+
+    if st.session_state.get('item_added_success', False):
+        st.session_state.item_added_success = False
+        st.success("הפריט נוסף בהצלחה!")
+        st.rerun()
+
+# ----------------------------------------------------
+# 3. מועדפים
+# ----------------------------------------------------
+with tab3:
+    st.subheader("⭐ הוספה מהירה ממועדפים")
+    for idx, fav in enumerate(FAVOURITES_DB):
+        col_f, col_btn = st.columns([3, 1])
+        col_f.write(f"**{fav['name']}** (₪{fav['estimated_price']})")
+        if col_btn.button("➕ הוסף", key=f"fav_{idx}"):
+            current_shopping_list.append({
+                "name": fav['name'], 
+                "quantity": 1, 
+                "category": fav['category'], 
+                "estimated_price": fav['estimated_price'], 
+                "checked": False
+            })
+            save_data()
+            st.success("נוסף לסל!")
+
+# ----------------------------------------------------
+# 4. סידור מסלול
+# ----------------------------------------------------
+with tab4:
+    st.subheader("🗺️ מסלול הליכה חכם בסופר")
+    active_items = [i for i in current_shopping_list if not i['checked']]
+    sorted_items = sorted(active_items, key=lambda x: AISLE_ORDER.get(x['category'], 99))
+    for item in sorted_items:
+        icon, _ = get_product_icon_and_color(item['category'])
+        st.write(f"• {icon} **{item['name']}** (מחלקה: {item['category']})")
+
+# ----------------------------------------------------
+# 5. השוואת מחירים
+# ----------------------------------------------------
+with tab5:
+    st.subheader("🧮 השוואת מחירים (מה משתלם יותר?)")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.write("אריזה א'")
+        pa = st.number_input("מחיר ₪", value=10.0, key="pa")
+        aa = st.number_input("כמות/משקל", value=500.0, key="aa")
+    with col_b:
+        st.write("אריזה ב'")
+        pb = st.number_input("מחיר ₪", value=18.0, key="pb")
+        ab = st.number_input("כמות/משקל", value=1000.0, key="ab")
+    if aa > 0 and ab > 0:
+        if (pa/aa) < (pb/ab): st.success("אריזה א' זולה יותר ליחידה!")
+        elif (pb/ab) < (pa/aa): st.success("אריזה ב' זולה יותר ליחידה!")
+        else: st.info("המחיר ליחידה זהה.")
+
+# ----------------------------------------------------
+# 6. מוצרים קבועים
+# ----------------------------------------------------
+with tab6:
+    st.subheader("🔄 מוצרים קבועים בבית")
+    new_rec = st.text_input("הוסף פריט קבוע:")
+    if st.button("שמור"):
+        if new_rec.strip() and new_rec not in st.session_state.recurring_items:
+            st.session_state.recurring_items.append(new_rec.strip())
+            save_data()
+    for idx, rec in enumerate(st.session_state.recurring_items):
+        c1, c2 = st.columns([3, 1])
+        c1.write(f"• {rec}")
+        if c2.button("➕ לסל", key=f"r_{idx}"):
+            cat, price = ai_smart_categorize_and_price(rec)
+            current_shopping_list.append({"name": rec, "quantity": 1, "category": cat, "estimated_price": price, "checked": False})
+            save_data()
+
+# ----------------------------------------------------
+# 7. קבלות והיסטוריה
+# ----------------------------------------------------
+with tab7:
+    st.subheader("📊 תקציב והיסטוריה")
+    new_budget = st.number_input("הגדר תקציב מקסימלי (₪):", value=float(st.session_state.budget))
+    if new_budget != st.session_state.budget:
+        st.session_state.budget = new_budget
+        save_data()
+    if st.session_state.purchase_history:
+        st.dataframe(pd.DataFrame(st.session_state.purchase_history), use_container_width=True)
+
+# ----------------------------------------------------
+# 8. ניהול חנויות והגדרות
 # ----------------------------------------------------
 with tab8:
     st.title("🏪 חנויות והגדרות")
     
     st.subheader("➕ הוספת חנות חדשה")
-    st.write("בחר את סוג החנות ותן לה שם מזהה (למשל: סופר-פארם שכונתי, הירקן שלי):")
-    
     store_types = ["סופרמרקט", "סופר-פארם / בית מרקחת", "ירקניה", "קצבייה", "מאפייה", "חנות חיות", "טמבוריה", "אחר"]
     selected_type = st.selectbox("בחר סוג חנות:", store_types)
     new_store_name = st.text_input("שם החנות החדשה:", value=f"{selected_type} חדש")
@@ -319,7 +462,7 @@ with tab8:
 
     st.markdown("---")
     st.subheader("🗑️ מחיקת חנות קיימת")
-    store_to_delete = st.selectbox("בחר חנות למחיקה (פעולה זו תמחק גם את הרשימה שלה):", list(st.session_state.stores.keys()))
+    store_to_delete = st.selectbox("בחר חנות למחיקה:", list(st.session_state.stores.keys()))
     if st.button("🗑️ מחק חנות זו לצמיתות"):
         if len(st.session_state.stores) > 1:
             del st.session_state.stores[store_to_delete]
@@ -338,75 +481,3 @@ with tab8:
         st.session_state.dark_mode = dark_toggle
         save_data()
         st.rerun()
-
-# ----------------------------------------------------
-# שאר כרטיסיות העזר (ללא שינוי, רק סדר)
-# ----------------------------------------------------
-with tab2:
-    st.subheader("➕ הוספת פריט ידנית")
-    with st.form("add_item_form"):
-        item_name = st.text_input("שם הפריט:")
-        item_qty = st.number_input("כמות", min_value=1, value=1)
-        if st.form_submit_button("הוסף לרשימה 🛒", type="primary") and item_name.strip():
-            category, price = ai_smart_categorize_and_price(item_name.strip())
-            current_shopping_list.append({"name": item_name.strip(), "quantity": item_qty, "category": category, "estimated_price": price, "checked": False})
-            save_data()
-            st.success("נוסף בהצלחה!")
-
-with tab3:
-    st.subheader("⭐ הוספה מהירה ממועדפים")
-    for idx, fav in enumerate(FAVOURITES_DB):
-        col_f, col_btn = st.columns([3, 1])
-        col_f.write(f"**{fav['name']}**")
-        if col_btn.button("➕ הוסף", key=f"fav_{idx}"):
-            current_shopping_list.append({"name": fav['name'], "quantity": 1, "category": fav['category'], "estimated_price": fav['estimated_price'], "checked": False})
-            save_data()
-            st.success("נוסף לסל!")
-
-with tab4:
-    st.subheader("🗺️ מסלול הליכה חכם בסופר")
-    active_items = [i for i in current_shopping_list if not i['checked']]
-    sorted_items = sorted(active_items, key=lambda x: AISLE_ORDER.get(x['category'], 99))
-    for item in sorted_items:
-        icon, _ = get_product_icon_and_color(item['category'])
-        st.write(f"• {icon} **{item['name']}** (מחלקה: {item['category']})")
-
-with tab5:
-    st.subheader("🧮 השוואת מחירים (מה משתלם יותר?)")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.write("אריזה א'")
-        pa = st.number_input("מחיר ₪", value=10.0, key="pa")
-        aa = st.number_input("כמות/משקל", value=500.0, key="aa")
-    with col_b:
-        st.write("אריזה ב'")
-        pb = st.number_input("מחיר ₪", value=18.0, key="pb")
-        ab = st.number_input("כמות/משקל", value=1000.0, key="ab")
-    if aa > 0 and ab > 0:
-        if (pa/aa) < (pb/ab): st.success("אריזה א' זולה יותר ליחידה!")
-        elif (pb/ab) < (pa/aa): st.success("אריזה ב' זולה יותר ליחידה!")
-        else: st.info("המחיר ליחידה זהה.")
-
-with tab6:
-    st.subheader("🔄 מוצרים קבועים בבית")
-    new_rec = st.text_input("הוסף פריט קבוע:")
-    if st.button("שמור"):
-        if new_rec.strip() and new_rec not in st.session_state.recurring_items:
-            st.session_state.recurring_items.append(new_rec.strip())
-            save_data()
-    for idx, rec in enumerate(st.session_state.recurring_items):
-        c1, c2 = st.columns([3, 1])
-        c1.write(f"• {rec}")
-        if c2.button("➕ לסל", key=f"r_{idx}"):
-            cat, price = ai_smart_categorize_and_price(rec)
-            current_shopping_list.append({"name": rec, "quantity": 1, "category": cat, "estimated_price": price, "checked": False})
-            save_data()
-
-with tab7:
-    st.subheader("📊 תקציב והיסטוריה")
-    new_budget = st.number_input("הגדר תקציב מקסימלי (₪):", value=float(st.session_state.budget))
-    if new_budget != st.session_state.budget:
-        st.session_state.budget = new_budget
-        save_data()
-    if st.session_state.purchase_history:
-        st.dataframe(pd.DataFrame(st.session_state.purchase_history), use_container_width=True)
