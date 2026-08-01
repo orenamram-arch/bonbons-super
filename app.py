@@ -34,8 +34,11 @@ AISLE_ORDER = {
 
 # הגדרת ה-AI (Gemini)
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    AI_AVAILABLE = True
+    if "GEMINI_API_KEY" in st.secrets:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        AI_AVAILABLE = True
+    else:
+        AI_AVAILABLE = False
 except:
     AI_AVAILABLE = False
 
@@ -392,19 +395,38 @@ with tab1:
                             st.rerun()
 
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🏁 סיים קנייה ושמור קבלה", type="primary"):
-                trip_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-                trip_total = sum(i['quantity'] * i['estimated_price'] for i in checked_items)
-                st.session_state.purchase_history.append({
-                    "date": trip_date,
-                    "store": st.session_state.active_store,
-                    "items_count": len(checked_items),
-                    "total_cost": trip_total
-                })
-                st.session_state.stores[st.session_state.active_store] = [i for i in current_shopping_list if not i['checked']]
-                save_data()
-                st.success("הקנייה נשמרה בהצלחה!")
-                st.rerun()
+            
+            # יצירת 3 עמודות לכפתורי סיום וניהול הרשימה
+            col_end1, col_end2, col_end3 = st.columns(3)
+            
+            with col_end1:
+                if st.button("🏁 סיים ושמור", type="primary", use_container_width=True):
+                    trip_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    trip_total = sum(i['quantity'] * i['estimated_price'] for i in checked_items)
+                    st.session_state.purchase_history.append({
+                        "date": trip_date,
+                        "store": st.session_state.active_store,
+                        "items_count": len(checked_items),
+                        "total_cost": trip_total
+                    })
+                    st.session_state.stores[st.session_state.active_store] = [i for i in current_shopping_list if not i['checked']]
+                    save_data()
+                    st.success("הקנייה נשמרה בהצלחה!")
+                    st.rerun()
+                    
+            with col_end2:
+                if st.button("🧹 מחק מסומנים", use_container_width=True):
+                    # משאיר רק את מה שלא סומן כנקנה (מבלי לשמור בהיסטוריה)
+                    st.session_state.stores[st.session_state.active_store] = [i for i in current_shopping_list if not i['checked']]
+                    save_data()
+                    st.rerun()
+                    
+            with col_end3:
+                if st.button("🗑️ רוקן רשימה", use_container_width=True):
+                    # מוחק את כל הרשימה של החנות הנוכחית
+                    st.session_state.stores[st.session_state.active_store] = []
+                    save_data()
+                    st.rerun()
 
 # ----------------------------------------------------
 # 2. הוספת פריט ידנית
@@ -479,7 +501,6 @@ with tab3:
         col_f, col_btn = st.columns([3, 1])
         col_f.write(f"**{fav['name']}** (₪{fav['estimated_price']})")
         if col_btn.button("➕ הוסף", key=f"fav_{idx}"):
-            # אפשר גם כאן לבדוק כפילות אם תרצה
             current_shopping_list.append({
                 "name": fav['name'],
                 "quantity": 1,
