@@ -49,6 +49,8 @@ def load_data():
         "next_trip_list": [],
         "purchase_history": [],
         "recurring_items": [],
+        "learned_categories": {}, # מילון חדש שבו המערכת לומדת את התיקונים שלך
+        "all_purchased_items": [], # רשימת כל הפריטים שרכשת אי פעם להשלמה אוטומטית
         "budget": 300.0,
         "dark_mode": False
     }
@@ -60,6 +62,8 @@ def save_data():
         "next_trip_list": st.session_state.next_trip_list,
         "purchase_history": st.session_state.purchase_history,
         "recurring_items": st.session_state.recurring_items,
+        "learned_categories": st.session_state.learned_categories,
+        "all_purchased_items": st.session_state.all_purchased_items,
         "budget": st.session_state.budget,
         "dark_mode": st.session_state.dark_mode
     }
@@ -72,6 +76,8 @@ if 'active_store' not in st.session_state: st.session_state.active_store = saved
 if 'next_trip_list' not in st.session_state: st.session_state.next_trip_list = saved_data["next_trip_list"]
 if 'purchase_history' not in st.session_state: st.session_state.purchase_history = saved_data["purchase_history"]
 if 'recurring_items' not in st.session_state: st.session_state.recurring_items = saved_data.get("recurring_items", [])
+if 'learned_categories' not in st.session_state: st.session_state.learned_categories = saved_data.get("learned_categories", {})
+if 'all_purchased_items' not in st.session_state: st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
 if 'budget' not in st.session_state: st.session_state.budget = saved_data.get("budget", 300.0)
 if 'dark_mode' not in st.session_state: st.session_state.dark_mode = saved_data.get("dark_mode", False)
 
@@ -145,7 +151,14 @@ def get_product_icon_and_color(category):
     return "🛒", "#64748b"
 
 def ai_smart_categorize_and_price(item_name):
-    name_lower = item_name.strip().lower()
+    clean_name = item_name.strip().lower()
+    
+    # 1. בדיקה האם המערכת למדה את הפריט הזה בעבר מהתיקונים שלך!
+    if clean_name in st.session_state.learned_categories:
+        learned_cat = st.session_state.learned_categories[clean_name]
+        # נחזיר את הקטגוריה שלמדה, ונשאיר הערכת מחיר ברירת מחדל או קיימת
+        return learned_cat, 12.0
+
     smart_db = {
         # ירקות ופירות
         "מלפפון": ("ירקות ופירות", 10.0), "עגבנייה": ("ירקות ופירות", 12.0),
@@ -174,7 +187,7 @@ def ai_smart_categorize_and_price(item_name):
         "ביסלי": ("חטיפים וממתקים", 4.5), "עוגיות": ("חטיפים וממתקים", 10.0)
     }
     for key, (cat, price) in smart_db.items():
-        if key in name_lower:
+        if key in clean_name:
             return cat, price
     return "שונות", 12.0
 
@@ -193,7 +206,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 ])
 
 # ----------------------------------------------------
-# 1. רשימת קניות פעילה
+# 1. רשימת קניות פעילה (כולל למידת תיקון קטגוריות)
 # ----------------------------------------------------
 with tab1:
     store_list = list(st.session_state.stores.keys())
@@ -281,21 +294,27 @@ with tab1:
                             save_data()
                             st.rerun()
 
+                # עריכת פריט ולמידת הקטגוריה המתוקנת
                 if st.session_state.get(f"show_edit_shop_{idx}", False):
                     with st.container():
                         with st.form(f"form_edit_item_{idx}"):
                             e_name = st.text_input("שם הפריט:", value=item['name'])
                             e_price = st.number_input("מחיר משוער ליחידה (₪):", value=float(item['estimated_price']))
                             current_cat_index = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 7
-                            e_category = st.selectbox("תקן קטגוריה (אם ה-AI טעה):", CATEGORIES, index=current_cat_index)
+                            e_category = st.selectbox("תקן קטגוריה (המערכת תלמד לפעמים הבאות):", CATEGORIES, index=current_cat_index)
                             
                             if st.form_submit_button("שמור שינויים", type="primary"):
-                                current_shopping_list[idx]['name'] = e_name.strip()
+                                new_name_clean = e_name.strip()
+                                current_shopping_list[idx]['name'] = new_name_clean
                                 current_shopping_list[idx]['estimated_price'] = e_price
                                 current_shopping_list[idx]['category'] = e_category
+                                
+                                # 🧠 למידה אוטומטית: שמירת התיקון שהמשתמש עשה לפעמים הבאות!
+                                st.session_state.learned_categories[new_name_clean.lower()] = e_category
+                                
                                 st.session_state[f"show_edit_shop_{idx}"] = False
                                 save_data()
-                                st.success("השינויים נשמרו!")
+                                st.success("השינויים נשמרו והמערכת למדה את הקטגוריה החדשה!")
                                 st.rerun()
 
                 st.markdown("<div style='margin-bottom: 6px;'></div>", unsafe_allow_html=True)
@@ -331,33 +350,48 @@ with tab1:
                 st.rerun()
 
 # ----------------------------------------------------
-# 2. הוספת פריט ידנית (עם אינדיקציה חזותית ברורה)
+# 2. הוספת פריט ידנית (עם השלמה אוטומטית מותאמת אישית)
 # ----------------------------------------------------
 with tab2:
     st.subheader("➕ הוספת פריט ידנית")
     
-    # הצגת אינדיקציה אם פריט נוסף זה עתה
     if st.session_state.get('last_added_item'):
         last = st.session_state.last_added_item
         st.success(f"✅ נוסף בהצלחה: **{last['name']}** (כמות: {last['qty']}) | מחלקה: {last['cat']} | מחיר משוער: ₪{last['price']:.2f}")
 
     with st.form("add_item_form"):
-        item_name = st.text_input("שם הפריט (ה-AI יזהה לבד קטגוריה ומחיר בישראל):")
+        # יצירת אפשרות בחירה והשלמה אוטומטית מתוך היסטוריית המוצרים שנרכשו בעבר
+        known_items_suggestions = sorted(list(set(st.session_state.all_purchased_items)))
+        
+        # שדה טקסט להקלדה חופשית או בחירה
+        item_name = st.text_input("שם הפריט (הקלד או בחר מההיסטוריה שצברתי):")
+        
+        # הצגת הצעות השלמה אוטומטית אם קיימות בהיסטוריה
+        if known_items_suggestions:
+            st.caption(f"💡 טיפ: פריטים שלמדת בעבר: {', '.join(known_items_suggestions[:10])}")
+
         item_qty = st.number_input("כמות", min_value=1, value=1)
+        
         if st.form_submit_button("הוסף לרשימה 🛒", type="primary") and item_name.strip():
-            category, price = ai_smart_categorize_and_price(item_name.strip())
+            clean_name = item_name.strip()
+            category, price = ai_smart_categorize_and_price(clean_name)
+            
             current_shopping_list.append({
-                "name": item_name.strip(), 
+                "name": clean_name, 
                 "quantity": item_qty, 
                 "category": category, 
                 "estimated_price": price, 
                 "checked": False
             })
+            
+            # 🧠 שמירה בהיסטוריה הכללית כדי שהמערכת תזכור לפעמים הבאות להשלמה אוטומטית
+            if clean_name not in st.session_state.all_purchased_items:
+                st.session_state.all_purchased_items.append(clean_name)
+
             save_data()
             
-            # שמירת פרטי הפריט האחרון להצגת אינדיקציה
             st.session_state.last_added_item = {
-                "name": item_name.strip(),
+                "name": clean_name,
                 "qty": item_qty,
                 "cat": category,
                 "price": price
@@ -380,6 +414,9 @@ with tab3:
                 "estimated_price": fav['estimated_price'], 
                 "checked": False
             })
+            # שמירה בהיסטוריה הכללית
+            if fav['name'] not in st.session_state.all_purchased_items:
+                st.session_state.all_purchased_items.append(fav['name'])
             save_data()
             st.success(f"נוסף בהצלחה: {fav['name']}!")
 
@@ -429,6 +466,8 @@ with tab6:
         if c2.button("➕ לסל", key=f"r_{idx}"):
             cat, price = ai_smart_categorize_and_price(rec)
             current_shopping_list.append({"name": rec, "quantity": 1, "category": cat, "estimated_price": price, "checked": False})
+            if rec not in st.session_state.all_purchased_items:
+                st.session_state.all_purchased_items.append(rec)
             save_data()
             st.success(f"הפריט '{rec}' נוסף לסל!")
 
