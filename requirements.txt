@@ -3,3 +3,4 @@ pandas
 duckduckgo_search
 requests
 pillow
+google-generativeai
