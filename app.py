@@ -51,8 +51,7 @@ def load_data():
         "recurring_items": [],
         "learned_categories": {},
         "all_purchased_items": [],
-        "budget": 300.0,
-        "theme_mode": "אוטומטי (לפי שעה)" # הגדרת מצב ברירת מחדל לתצוגה
+        "budget": 300.0
     }
 
 def save_data():
@@ -64,8 +63,7 @@ def save_data():
         "recurring_items": st.session_state.recurring_items,
         "learned_categories": st.session_state.learned_categories,
         "all_purchased_items": st.session_state.all_purchased_items,
-        "budget": st.session_state.budget,
-        "theme_mode": st.session_state.theme_mode # שמירת בחירת התצוגה של המשתמש
+        "budget": st.session_state.budget
     }
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -79,74 +77,75 @@ if 'recurring_items' not in st.session_state: st.session_state.recurring_items =
 if 'learned_categories' not in st.session_state: st.session_state.learned_categories = saved_data.get("learned_categories", {})
 if 'all_purchased_items' not in st.session_state: st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
 if 'budget' not in st.session_state: st.session_state.budget = saved_data.get("budget", 300.0)
-if 'theme_mode' not in st.session_state: st.session_state.theme_mode = saved_data.get("theme_mode", "אוטומטי (לפי שעה)")
 
 if st.session_state.active_store not in st.session_state.stores:
     st.session_state.stores[st.session_state.active_store] = []
 
-# --- מנגנון תצוגה חכם (מצב לילה/יום) ---
-current_hour = datetime.now().hour
-is_night = current_hour >= 18 or current_hour < 6 # נחשב לילה מהשעה 18:00 בערב עד 06:00 בבוקר
-
-if st.session_state.theme_mode == "אוטומטי (לפי שעה)":
-    dark = is_night
-elif st.session_state.theme_mode == "כהה":
-    dark = True
-else:
-    dark = False
-
-# הגדרת הצבעים בהתאם למצב שנבחר
-bg_color = "#0f172a" if dark else "#f7f9fb"
-card_bg = "#1e293b" if dark else "#ffffff"
-text_color = "#f8fafc" if dark else "#0f172a"
-sub_text = "#94a3b8" if dark else "#64748b"
-border_color = "#334155" if dark else "#e2e8f0"
-
-# --- עיצוב דינמי והעלמה מוחלטת של הוילון ותפריט הצד ---
-st.markdown(f"""
+# --- עיצוב דינמי שמזהה אוטומטית את הגדרות המכשיר של המשתמש (יום/לילה) ---
+st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
 
-    [data-testid="stSidebar"], [data-testid="collapsedControl"], header, [data-testid="stToolbar"] {{
-        display: none !important;
-    }}
+    /* צבעי ברירת מחדל למכשירים במצב בהיר */
+    :root {
+        --app-bg: #f7f9fb;
+        --card-bg: #ffffff;
+        --app-text: #0f172a;
+        --sub-text: #64748b;
+        --app-border: #e2e8f0;
+    }
 
-    body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox, .stRadio {{
+    /* החלפה אוטומטית לצבעים כהים אם המכשיר של המשתמש מוגדר על מצב לילה */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --app-bg: #0f172a;
+            --card-bg: #1e293b;
+            --app-text: #f8fafc;
+            --sub-text: #94a3b8;
+            --app-border: #334155;
+        }
+    }
+
+    [data-testid="stSidebar"], [data-testid="collapsedControl"], header, [data-testid="stToolbar"] {
+        display: none !important;
+    }
+
+    body, .stApp, .stTextInput, .stMarkdown, .stButton>button, .stSelectbox {
         direction: rtl;
         text-align: right;
         font-family: 'Assistant', sans-serif !important;
-        color: {text_color} !important;
-    }}
+        color: var(--app-text) !important;
+    }
 
-    .stApp {{ background-color: {bg_color}; }}
-    h1, h2, h3 {{ color: {text_color} !important; font-weight: 800 !important; }}
+    .stApp { background-color: var(--app-bg); }
+    h1, h2, h3 { color: var(--app-text) !important; font-weight: 800 !important; }
 
-    div[data-testid="metric-container"] {{
-        background: {card_bg};
-        border: 1px solid {border_color};
+    div[data-testid="metric-container"] {
+        background: var(--card-bg);
+        border: 1px solid var(--app-border);
         padding: 12px 15px;
         border-radius: 16px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         text-align: center;
         border-right: 5px solid #3b82f6;
-    }}
-    div[data-testid="metric-container"] label {{ color: {sub_text} !important; font-size: 14px !important; }}
-    div[data-testid="metric-container"] div[data-testid="stMetricValue"] {{ color: {text_color} !important; font-size: 22px !important; font-weight: 700 !important; }}
+    }
+    div[data-testid="metric-container"] label { color: var(--sub-text) !important; font-size: 14px !important; }
+    div[data-testid="metric-container"] div[data-testid="stMetricValue"] { color: var(--app-text) !important; font-size: 22px !important; font-weight: 700 !important; }
 
-    .product-card {{
-        background-color: {card_bg};
-        border: 1px solid {border_color};
+    .product-card {
+        background-color: var(--card-bg);
+        border: 1px solid var(--app-border);
         padding: 14px 16px;
         border-radius: 14px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         margin-bottom: 6px;
         display: flex;
         align-items: center;
-    }}
-    .product-name {{ font-size: 18px !important; font-weight: 700 !important; color: {text_color}; }}
-    .product-details {{ font-size: 13px; color: {sub_text}; }}
+    }
+    .product-name { font-size: 18px !important; font-weight: 700 !important; color: var(--app-text); }
+    .product-details { font-size: 13px; color: var(--sub-text); }
 
-    .stButton>button {{ border-radius: 10px; font-weight: 600; transition: all 0.2s; width: 100%; }}
+    .stButton>button { border-radius: 10px; font-weight: 600; transition: all 0.2s; width: 100%; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -203,7 +202,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🧮 השוואה",
     "🛍️ לקנייה הבאה",
     "📊 קבלות",
-    "🏪 הגדרות" # שיניתי את השם מעט כדי שיתאים גם לתצוגה
+    "🏪 חנויות"
 ])
 
 # ----------------------------------------------------
@@ -539,20 +538,3 @@ with tab8:
             st.rerun()
         else:
             st.error("חייבת להישאר לפחות חנות אחת פעילה באפליקציה.")
-
-    # --- מנגנון בחירת תצוגה מעודכן ---
-    st.markdown("---")
-    st.subheader("🌙 תצוגה ועיצוב")
-    
-    theme_options = ["אוטומטי (לפי שעה)", "בהיר", "כהה"]
-    selected_theme = st.radio(
-        "בחר מצב תצוגה:", 
-        theme_options, 
-        index=theme_options.index(st.session_state.theme_mode),
-        horizontal=True
-    )
-    
-    if selected_theme != st.session_state.theme_mode:
-        st.session_state.theme_mode = selected_theme
-        save_data()
-        st.rerun()
