@@ -49,8 +49,8 @@ def load_data():
         "next_trip_list": [],
         "purchase_history": [],
         "recurring_items": [],
-        "learned_categories": {}, # מילון חדש שבו המערכת לומדת את התיקונים שלך
-        "all_purchased_items": [], # רשימת כל הפריטים שרכשת אי פעם להשלמה אוטומטית
+        "learned_categories": {},
+        "all_purchased_items": [],
         "budget": 300.0,
         "dark_mode": False
     }
@@ -96,7 +96,6 @@ st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap');
 
-    /* הסתרה מוחלטת של סרגל הצד, כפתור הוילון, התפריטים והכותרת העליונה של Streamlit */
     [data-testid="stSidebar"], [data-testid="collapsedControl"], header, [data-testid="stToolbar"] {{
         display: none !important;
     }}
@@ -153,36 +152,29 @@ def get_product_icon_and_color(category):
 def ai_smart_categorize_and_price(item_name):
     clean_name = item_name.strip().lower()
     
-    # 1. בדיקה האם המערכת למדה את הפריט הזה בעבר מהתיקונים שלך!
+    # 1. בדיקה האם המערכת למדה את הפריט מהתיקון שלך
     if clean_name in st.session_state.learned_categories:
-        learned_cat = st.session_state.learned_categories[clean_name]
-        # נחזיר את הקטגוריה שלמדה, ונשאיר הערכת מחיר ברירת מחדל או קיימת
-        return learned_cat, 12.0
+        return st.session_state.learned_categories[clean_name], 12.0
 
     smart_db = {
-        # ירקות ופירות
         "מלפפון": ("ירקות ופירות", 10.0), "עגבנייה": ("ירקות ופירות", 12.0),
         "תפוח": ("ירקות ופירות", 14.0), "בננה": ("ירקות ופירות", 10.0),
         "בצל": ("ירקות ופירות", 6.0), "תפוח אדמה": ("ירקות ופירות", 7.0),
         "גזר": ("ירקות ופירות", 6.5), "לימון": ("ירקות ופירות", 9.0),
-        # מוצרי חלב
+        "כוסברה": ("ירקות ופירות", 4.0), "פטרוזיליה": ("ירקות ופירות", 4.0),
+        "שמיר": ("ירקות ופירות", 4.0), "נענע": ("ירקות ופירות", 5.0),
         "חלב": ("מוצרי חלב", 7.2), "גבינה": ("מוצרי חלב", 6.8),
         "ביצים": ("מוצרי חלב", 14.0), "קוטג'": ("מוצרי חלב", 6.8),
         "גבינה צהובה": ("מוצרי חלב", 32.0), "יוגורט": ("מוצרי חלב", 4.5),
-        # בשר ודגים
         "עוף": ("בשר ודגים", 35.0), "בקר": ("בשר ודגים", 55.0),
         "סלמון": ("בשר ודגים", 90.0), "טונה": ("בשר ודגים", 8.0),
-        # מאפים
         "לחם": ("מאפים", 8.5), "פיתות": ("מאפים", 15.0),
         "חלה": ("מאפים", 7.0), "בורקס": ("מאפים", 25.0),
-        # חומרי ניקוי
         "שמפו": ("חומרי ניקוי", 18.0), "נייר טואלט": ("חומרי ניקוי", 32.0),
         "אבקת כביסה": ("חומרי ניקוי", 29.0), "נוזל כלים": ("חומרי ניקוי", 8.5),
-        # שימורים ויבשים
         "אורז": ("שימורים ויבשים", 10.0), "שמן": ("שימורים ויבשים", 12.0),
         "קמח": ("שימורים ויבשים", 6.0), "סוכר": ("שימורים ויבשים", 6.5),
         "קפה": ("שימורים ויבשים", 35.0), "פסטה": ("שימורים ויבשים", 6.0),
-        # חטיפים וממתקים
         "שוקולד": ("חטיפים וממתקים", 6.5), "במבה": ("חטיפים וממתקים", 4.5),
         "ביסלי": ("חטיפים וממתקים", 4.5), "עוגיות": ("חטיפים וממתקים", 10.0)
     }
@@ -193,7 +185,6 @@ def ai_smart_categorize_and_price(item_name):
 
 current_shopping_list = st.session_state.stores[st.session_state.active_store]
 
-# --- ניהול ראשי דרך כרטיסיות (Tabs) ---
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🛒 רשימה", 
     "➕ הוספה", 
@@ -206,7 +197,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 ])
 
 # ----------------------------------------------------
-# 1. רשימת קניות פעילה (כולל למידת תיקון קטגוריות)
+# 1. רשימת קניות פעילה
 # ----------------------------------------------------
 with tab1:
     store_list = list(st.session_state.stores.keys())
@@ -294,14 +285,14 @@ with tab1:
                             save_data()
                             st.rerun()
 
-                # עריכת פריט ולמידת הקטגוריה המתוקנת
+                # תיקון קטגוריה ושמירה מיידית לקובץ
                 if st.session_state.get(f"show_edit_shop_{idx}", False):
                     with st.container():
                         with st.form(f"form_edit_item_{idx}"):
                             e_name = st.text_input("שם הפריט:", value=item['name'])
                             e_price = st.number_input("מחיר משוער ליחידה (₪):", value=float(item['estimated_price']))
                             current_cat_index = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 7
-                            e_category = st.selectbox("תקן קטגוריה (המערכת תלמד לפעמים הבאות):", CATEGORIES, index=current_cat_index)
+                            e_category = st.selectbox("תקן קטגוריה (המערכת תלמיד ותשמור לפעמים הבאות):", CATEGORIES, index=current_cat_index)
                             
                             if st.form_submit_button("שמור שינויים", type="primary"):
                                 new_name_clean = e_name.strip()
@@ -309,12 +300,12 @@ with tab1:
                                 current_shopping_list[idx]['estimated_price'] = e_price
                                 current_shopping_list[idx]['category'] = e_category
                                 
-                                # 🧠 למידה אוטומטית: שמירת התיקון שהמשתמש עשה לפעמים הבאות!
+                                # 🧠 שמירה בזיכרון המערכת ושמירה מיידית לקובץ הנתונים
                                 st.session_state.learned_categories[new_name_clean.lower()] = e_category
+                                save_data() 
                                 
                                 st.session_state[f"show_edit_shop_{idx}"] = False
-                                save_data()
-                                st.success("השינויים נשמרו והמערכת למדה את הקטגוריה החדשה!")
+                                st.success("השינויים נשמרו והמערכת למדה את הקטגוריה לצמיתות!")
                                 st.rerun()
 
                 st.markdown("<div style='margin-bottom: 6px;'></div>", unsafe_allow_html=True)
@@ -350,7 +341,7 @@ with tab1:
                 st.rerun()
 
 # ----------------------------------------------------
-# 2. הוספת פריט ידנית (עם השלמה אוטומטית מותאמת אישית)
+# 2. הוספת פריט ידנית (עם בורר השלמה אוטומטית חכם)
 # ----------------------------------------------------
 with tab2:
     st.subheader("➕ הוספת פריט ידנית")
@@ -360,43 +351,48 @@ with tab2:
         st.success(f"✅ נוסף בהצלחה: **{last['name']}** (כמות: {last['qty']}) | מחלקה: {last['cat']} | מחיר משוער: ₪{last['price']:.2f}")
 
     with st.form("add_item_form"):
-        # יצירת אפשרות בחירה והשלמה אוטומטית מתוך היסטוריית המוצרים שנרכשו בעבר
-        known_items_suggestions = sorted(list(set(st.session_state.all_purchased_items)))
+        # איסוף כל הפריטים שהתווספו אי פעם להיסטוריה + ברירת מחדל
+        known_items = sorted(list(set(st.session_state.all_purchased_items)))
         
-        # שדה טקסט להקלדה חופשית או בחירה
-        item_name = st.text_input("שם הפריט (הקלד או בחר מההיסטוריה שצברתי):")
+        st.write("בחר פריט מתוך ההיסטוריה שלמדת או הקלד פריט חדש:")
+        selected_known_item = st.selectbox("פריטים מוכרים בהיסטוריה:", ["-- בחר מההיסטוריה או הקלד למטה --"] + known_items)
+        manual_item_name = st.text_input("או הקלד שם פריט חדש באופן חופשי:")
         
-        # הצגת הצעות השלמה אוטומטית אם קיימות בהיסטוריה
-        if known_items_suggestions:
-            st.caption(f"💡 טיפ: פריטים שלמדת בעבר: {', '.join(known_items_suggestions[:10])}")
-
         item_qty = st.number_input("כמות", min_value=1, value=1)
         
-        if st.form_submit_button("הוסף לרשימה 🛒", type="primary") and item_name.strip():
-            clean_name = item_name.strip()
-            category, price = ai_smart_categorize_and_price(clean_name)
-            
-            current_shopping_list.append({
-                "name": clean_name, 
-                "quantity": item_qty, 
-                "category": category, 
-                "estimated_price": price, 
-                "checked": False
-            })
-            
-            # 🧠 שמירה בהיסטוריה הכללית כדי שהמערכת תזכור לפעמים הבאות להשלמה אוטומטית
-            if clean_name not in st.session_state.all_purchased_items:
-                st.session_state.all_purchased_items.append(clean_name)
+        if st.form_submit_button("הוסף לרשימה 🛒", type="primary"):
+            # קביעת שם הפריט לפי מה שהמשתמש בחר או הקליד
+            final_name = ""
+            if manual_item_name.strip():
+                final_name = manual_item_name.strip()
+            elif selected_known_item != "-- בחר מההיסטוריה או הקלד למטה --":
+                final_name = selected_known_item
+                
+            if final_name:
+                category, price = ai_smart_categorize_and_price(final_name)
+                
+                current_shopping_list.append({
+                    "name": final_name, 
+                    "quantity": item_qty, 
+                    "category": category, 
+                    "estimated_price": price, 
+                    "checked": False
+                })
+                
+                if final_name not in st.session_state.all_purchased_items:
+                    st.session_state.all_purchased_items.append(final_name)
 
-            save_data()
-            
-            st.session_state.last_added_item = {
-                "name": clean_name,
-                "qty": item_qty,
-                "cat": category,
-                "price": price
-            }
-            st.rerun()
+                save_data()
+                
+                st.session_state.last_added_item = {
+                    "name": final_name,
+                    "qty": item_qty,
+                    "cat": category,
+                    "price": price
+                }
+                st.rerun()
+            else:
+                st.warning("נא לבחור פריט מהרשימה או להקליד שם פריט חדש.")
 
 # ----------------------------------------------------
 # 3. מועדפים
@@ -414,7 +410,6 @@ with tab3:
                 "estimated_price": fav['estimated_price'], 
                 "checked": False
             })
-            # שמירה בהיסטוריה הכללית
             if fav['name'] not in st.session_state.all_purchased_items:
                 st.session_state.all_purchased_items.append(fav['name'])
             save_data()
