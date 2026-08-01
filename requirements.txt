@@ -4,3 +4,4 @@ duckduckgo_search
 requests
 pillow
 google-generativeai
+gspread
