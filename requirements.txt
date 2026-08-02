@@ -5,3 +5,4 @@ requests
 pillow
 google-generativeai
 gspread
+supabase
