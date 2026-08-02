@@ -177,11 +177,9 @@ def get_product_icon_and_color(category):
 def ai_smart_categorize_and_price(item_name):
     clean_name = item_name.strip().lower()
 
-    # 1. אם כבר למדנו בעבר
     if clean_name in st.session_state.learned_categories:
         return st.session_state.learned_categories[clean_name], 12.0
 
-    # 2. ניסיון עם Gemini אם זמין
     if AI_AVAILABLE:
         try:
             model = genai.GenerativeModel('gemini-1.5-flash')
@@ -201,7 +199,6 @@ def ai_smart_categorize_and_price(item_name):
         except Exception:
             pass
 
-    # 3. גיבוי למילון המקומי
     smart_db = {
         "מלפפון": ("ירקות ופירות", 10.0), "עגבנייה": ("ירקות ופירות", 12.0),
         "תפוח": ("ירקות ופירות", 14.0), "בננה": ("ירקות ופירות", 10.0),
@@ -356,7 +353,6 @@ with tab1:
 
                 st.markdown("<div style='margin-bottom: 6px;'></div>", unsafe_allow_html=True)
 
-        # כפתור שיתוף בוואטסאפ עבור פריטים פעילים
         active_items = [i for i in current_shopping_list if not i['checked']]
         if active_items:
             st.markdown("---")
@@ -396,7 +392,6 @@ with tab1:
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # יצירת 3 עמודות לכפתורי סיום וניהול הרשימה
             col_end1, col_end2, col_end3 = st.columns(3)
             
             with col_end1:
@@ -416,14 +411,13 @@ with tab1:
                     
             with col_end2:
                 if st.button("🧹 מחק מסומנים", use_container_width=True):
-                    # משאיר רק את מה שלא סומן כנקנה (מבלי לשמור בהיסטוריה)
                     st.session_state.stores[st.session_state.active_store] = [i for i in current_shopping_list if not i['checked']]
                     save_data()
                     st.rerun()
                     
             with col_end3:
+                # הוספת כפתור אישור או הגנה למחיקת כל הרשימה כדי למנוע טעויות
                 if st.button("🗑️ רוקן רשימה", use_container_width=True):
-                    # מוחק את כל הרשימה של החנות הנוכחית
                     st.session_state.stores[st.session_state.active_store] = []
                     save_data()
                     st.rerun()
@@ -458,7 +452,6 @@ with tab2:
                 final_name = selected_known_item
 
             if final_name:
-                # בדיקה אם הפריט כבר קיים ברשימה
                 exists = any(
                     item['name'] == final_name and not item['checked']
                     for item in current_shopping_list
@@ -594,11 +587,52 @@ with tab7:
         st.dataframe(pd.DataFrame(st.session_state.purchase_history), use_container_width=True)
 
 # ----------------------------------------------------
-# 8. ניהול חנויות והגדרות
+# 8. ניהול חנויות והגדרות (כולל גיבוי ושחזור קבצים)
 # ----------------------------------------------------
 with tab8:
     st.title("🏪 חנויות והגדרות")
 
+    # אזור גיבוי ושחזור למניעת אובדן נתונים
+    st.subheader("💾 גיבוי ושחזור נתוני הקניות")
+    st.write("כדי לוודא שלעולם לא תאבד את הרשימות, ההיסטוריה והחנויות שלך, תוכל להוריד קובץ גיבוי או לשחזר ממנו:")
+    
+    backup_data_json = json.dumps({
+        "stores": st.session_state.stores,
+        "active_store": st.session_state.active_store,
+        "next_trip_list": st.session_state.next_trip_list,
+        "purchase_history": st.session_state.purchase_history,
+        "recurring_items": st.session_state.recurring_items,
+        "learned_categories": st.session_state.learned_categories,
+        "all_purchased_items": st.session_state.all_purchased_items,
+        "budget": st.session_state.budget
+    }, ensure_ascii=False, indent=4)
+    
+    st.download_button(
+        label="📥 הורד קובץ גיבוי מלא (JSON)",
+        data=backup_data_json,
+        file_name="shopping_trip_backup.json",
+        mime="application/json"
+    )
+
+    uploaded_backup = st.file_uploader("📤 שחזר נתונים מקובץ גיבוי קודם:", type=["json"])
+    if uploaded_backup is not None:
+        try:
+            restored_data = json.load(uploaded_backup)
+            st.session_state.stores = restored_data.get("stores", {"סופרמרקט מרכזי": []})
+            st.session_state.active_store = restored_data.get("active_store", "סופרמרקט מרכזי")
+            st.session_state.next_trip_list = restored_data.get("next_trip_list", [])
+            st.session_state.purchase_history = restored_data.get("purchase_history", [])
+            st.session_state.recurring_items = restored_data.get("recurring_items", [])
+            st.session_state.learned_categories = restored_data.get("learned_categories", {})
+            st.session_state.all_purchased_items = restored_data.get("all_purchased_items", [])
+            st.session_state.budget = restored_data.get("budget", 300.0)
+            save_data()
+            st.success("הנתונים שוחזרו בהצלחה!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"שגיאה בשחזור הקובץ: {e}")
+
+    st.markdown("---")
     st.subheader("➕ הוספת חנות חדשה")
     store_types = ["סופרמרקט", "סופר-פארם / בית מרקחת", "ירקניה", "קצבייה", "מאפייה", "חנות חיות", "טמבוריה", "אחר"]
     selected_type = st.selectbox("בחר סוג חנות:", store_types)
