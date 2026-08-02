@@ -14,6 +14,11 @@ st.set_page_config(page_title="ניהול קניות אולטימטיבי", page
 SUPABASE_URL = "https://vobzhjutimeowgsjhgyt.supabase.co"
 SUPABASE_KEY = "sb_publishable_OC3UKQ-UdO3ba4yHgvt9RQ_-AZdenBv"
 
+supabase.table("app_data").upsert(
+    {"key": "שם_המפתח_כאן", "content": data},
+    on_conflict="key"
+).execute()
+
 @st.cache_resource
 def init_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
