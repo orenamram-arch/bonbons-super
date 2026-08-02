@@ -2,15 +2,24 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import json
-import os
 import time
 import urllib.parse
 import google.generativeai as genai
+from supabase import create_client, Client
 
 # הגדרת עמוד האפליקציה (חייב להיות ראשון)
 st.set_page_config(page_title="ניהול קניות אולטימטיבי", page_icon="🛒", layout="centered")
 
-DATA_FILE = "shopping_data.json"
+# --- חיבור ל-Supabase בענן ---
+SUPABASE_URL = "https://vobzhjutimeowgsjhgyt.supabase.co"
+SUPABASE_KEY = "sb_publishable_OC3UKQ-UdO3ba4yHgvt9RQ_-AZdenBv"
+
+@st.cache_resource
+def init_supabase() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+supabase = init_supabase()
+
 CATEGORIES = ["ירקות ופירות", "מוצרי חלב", "בשר ודגים", "מאפים", "חומרי ניקוי", "חטיפים וממתקים", "שימורים ויבשים", "שונות"]
 FAVOURITES_DB = [
     {"name": "חלב 3%", "category": "מוצרי חלב", "estimated_price": 7.2},
@@ -44,17 +53,12 @@ except:
 
 
 def load_data():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if "shopping_list" in data and "stores" not in data:
-                    old_list = data["shopping_list"]
-                    data["stores"] = {"סופרמרקט מרכזי": old_list}
-                    data["active_store"] = "סופרמרקט מרכזי"
-                return data
-        except Exception:
-            pass
+    try:
+        response = supabase.table("app_data").select("content").eq("key", "main_data").execute()
+        if response.data and len(response.data) > 0:
+            return response.data[0]["content"]
+    except Exception as e:
+        st.warning(f"שגיאה בטעינת הנתונים מ-Supabase: {e}")
 
     return {
         "stores": {"סופרמרקט מרכזי": []},
@@ -69,18 +73,20 @@ def load_data():
 
 
 def save_data():
-    data = {
-        "stores": st.session_state.stores,
-        "active_store": st.session_state.active_store,
-        "next_trip_list": st.session_state.next_trip_list,
-        "purchase_history": st.session_state.purchase_history,
-        "recurring_items": st.session_state.recurring_items,
-        "learned_categories": st.session_state.learned_categories,
-        "all_purchased_items": st.session_state.all_purchased_items,
-        "budget": st.session_state.budget
-    }
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    try:
+        data = {
+            "stores": st.session_state.stores,
+            "active_store": st.session_state.active_store,
+            "next_trip_list": st.session_state.next_trip_list,
+            "purchase_history": st.session_state.purchase_history,
+            "recurring_items": st.session_state.recurring_items,
+            "learned_categories": st.session_state.learned_categories,
+            "all_purchased_items": st.session_state.all_purchased_items,
+            "budget": st.session_state.budget
+        }
+        supabase.table("app_data").upsert({"key": "main_data", "content": data}).execute()
+    except Exception as e:
+        st.error(f"שגיאה בשמירת הנתונים ב-Supabase: {e}")
 
 
 saved_data = load_data()
@@ -416,7 +422,6 @@ with tab1:
                     st.rerun()
                     
             with col_end3:
-                # הוספת כפתור אישור או הגנה למחיקת כל הרשימה כדי למנוע טעויות
                 if st.button("🗑️ רוקן רשימה", use_container_width=True):
                     st.session_state.stores[st.session_state.active_store] = []
                     save_data()
@@ -587,52 +592,11 @@ with tab7:
         st.dataframe(pd.DataFrame(st.session_state.purchase_history), use_container_width=True)
 
 # ----------------------------------------------------
-# 8. ניהול חנויות והגדרות (כולל גיבוי ושחזור קבצים)
+# 8. ניהול חנויות והגדרות
 # ----------------------------------------------------
 with tab8:
     st.title("🏪 חנויות והגדרות")
 
-    # אזור גיבוי ושחזור למניעת אובדן נתונים
-    st.subheader("💾 גיבוי ושחזור נתוני הקניות")
-    st.write("כדי לוודא שלעולם לא תאבד את הרשימות, ההיסטוריה והחנויות שלך, תוכל להוריד קובץ גיבוי או לשחזר ממנו:")
-    
-    backup_data_json = json.dumps({
-        "stores": st.session_state.stores,
-        "active_store": st.session_state.active_store,
-        "next_trip_list": st.session_state.next_trip_list,
-        "purchase_history": st.session_state.purchase_history,
-        "recurring_items": st.session_state.recurring_items,
-        "learned_categories": st.session_state.learned_categories,
-        "all_purchased_items": st.session_state.all_purchased_items,
-        "budget": st.session_state.budget
-    }, ensure_ascii=False, indent=4)
-    
-    st.download_button(
-        label="📥 הורד קובץ גיבוי מלא (JSON)",
-        data=backup_data_json,
-        file_name="shopping_trip_backup.json",
-        mime="application/json"
-    )
-
-    uploaded_backup = st.file_uploader("📤 שחזר נתונים מקובץ גיבוי קודם:", type=["json"])
-    if uploaded_backup is not None:
-        try:
-            restored_data = json.load(uploaded_backup)
-            st.session_state.stores = restored_data.get("stores", {"סופרמרקט מרכזי": []})
-            st.session_state.active_store = restored_data.get("active_store", "סופרמרקט מרכזי")
-            st.session_state.next_trip_list = restored_data.get("next_trip_list", [])
-            st.session_state.purchase_history = restored_data.get("purchase_history", [])
-            st.session_state.recurring_items = restored_data.get("recurring_items", [])
-            st.session_state.learned_categories = restored_data.get("learned_categories", {})
-            st.session_state.all_purchased_items = restored_data.get("all_purchased_items", [])
-            st.session_state.budget = restored_data.get("budget", 300.0)
-            save_data()
-            st.success("הנתונים שוחזרו בהצלחה!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"שגיאה בשחזור הקובץ: {e}")
-
-    st.markdown("---")
     st.subheader("➕ הוספת חנות חדשה")
     store_types = ["סופרמרקט", "סופר-פארם / בית מרקחת", "ירקניה", "קצבייה", "מאפייה", "חנות חיות", "טמבוריה", "אחר"]
     selected_type = st.selectbox("בחר סוג חנות:", store_types)
