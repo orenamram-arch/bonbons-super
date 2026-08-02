@@ -12,12 +12,11 @@ import google.generativeai as genai
 st.set_page_config(page_title="ניהול קניות אולטימטיבי", page_icon="🛒", layout="centered")
 
 # ==========================================
-# הגדרות GitHub (ניתן למלא ישירות כאן)
+# הגדרות GitHub (משולבות באופן אוטומטי)
 # ==========================================
-# אם תרצה, אפשר להכניס את הנתונים ישירות למחרוזות במקום ב-Secrets:
-GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "הדבק_כאן_טוקן_אם_יש")
-REPO_OWNER = st.secrets.get("GITHUB_OWNER", "שם_המשתמש_שלך")
-REPO_NAME = st.secrets.get("GITHUB_REPO", "שם_המאגר_שלך")
+GITHUB_TOKEN = "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"
+REPO_OWNER = "orenamram-arch"  # שם המשתמש שלך לפי כתובת המאגר הקודמת
+REPO_NAME = "mrp_checking"     # שם המאגר שבו אתה משתמש כרגע
 FILE_PATH = "shopping_data.json"
 
 CATEGORIES = ["ירקות ופירות", "מוצרי חלב", "בשר ודגים", "מאפים", "חומרי ניקוי", "חטיפים וממתקים", "שימורים ויבשים", "שונות"]
@@ -46,7 +45,7 @@ AISLE_ORDER = {
 # ----------------------------------------------------
 def load_data():
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN and GITHUB_TOKEN != "הדבק_כאן_טוקן_אם_יש" else {}
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     
     try:
         response = requests.get(url, headers=headers)
@@ -64,7 +63,7 @@ def load_data():
 
     # מבנה ברירת מחדל אם הקובץ עדיין לא קיים
     return {
-        "stores": {"סופerמרקט מרכזי": []},
+        "stores": {"סופרמרקט מרכזי": []},
         "active_store": "סופרמרקט מרכזי",
         "next_trip_list": [],
         "purchase_history": [],
@@ -86,9 +85,6 @@ def save_data():
         "budget": st.session_state.budget
     }
     
-    if not GITHUB_TOKEN or GITHUB_TOKEN == "הדבק_כאן_טוקן_אם_יש":
-        return # אם אין טוקן מוגדר, לא ננסה לשמור בענן כדי לא להפיל את האפליקציה
-
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     
@@ -231,7 +227,7 @@ with tab1:
                         current_shopping_list[idx]['quantity'] -= 1
                         save_data(); st.rerun()
                 with c_plus:
-                    if st.button("➕", key=f"plus_{idx}otipo"):
+                    if st.button("➕", key=f"plus_{idx}"):
                         current_shopping_list[idx]['quantity'] += 1
                         save_data(); st.rerun()
                 with c_del:
