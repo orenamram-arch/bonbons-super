@@ -12,7 +12,7 @@ import google.generativeai as genai
 st.set_page_config(page_title="ניהול קניות אולטימטיבי", page_icon="🛒", layout="centered")
 
 # ==========================================
-# הגדרות GitHub (משולבות באופן אוטומטי)
+# הגדרות GitHub
 # ==========================================
 GITHUB_TOKEN = "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"
 REPO_OWNER = "orenamram-arch"
@@ -41,7 +41,7 @@ AISLE_ORDER = {
 }
 
 # ----------------------------------------------------
-# פונקציות טעינה ושמירה אוטומטית מול GitHub
+# פונקציות טעינה ושמירה מאובטחות מול GitHub
 # ----------------------------------------------------
 def load_data():
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
@@ -53,15 +53,12 @@ def load_data():
             file_info = response.json()
             file_content = base64.b64decode(file_info['content']).decode('utf-8')
             data = json.loads(file_content)
-            if "shopping_list" in data and "stores" not in data:
-                old_list = data["shopping_list"]
-                data["stores"] = {"סופרמרקט מרכזי": old_list}
-                data["active_store"] = "סופרמרקט מרכזי"
-            return data
-    except Exception:
-        pass
+            if "stores" in data and data["stores"]:
+                return data
+    except Exception as e:
+        print(f"Error loading from GitHub: {e}")
 
-    # מבנה ברירת מחדל אם הקובץ עדיין לא קיים
+    # ברירת מחדל רק אם אין כלום בענן
     return {
         "stores": {"סופרמרקט מרכזי": []},
         "active_store": "סופרמרקט מרכזי",
@@ -105,7 +102,7 @@ def save_data():
         put_resp = requests.put(url, headers=headers, json=payload)
         
         if put_resp.status_code in [200, 201]:
-            st.toast("✅ הנתונים נשמרו בהצלחה ב-GitHub!", icon="🚀")
+            st.toast("✅ נשמר בהצלחה בענן של GitHub!", icon="🚀")
         else:
             st.error(f"שגיאה בשמירה ל-GitHub (קוד {put_resp.status_code}): {put_resp.text}")
             
@@ -122,18 +119,23 @@ try:
 except:
     AI_AVAILABLE = False
 
-saved_data = load_data()
-if 'stores' not in st.session_state: st.session_state.stores = saved_data.get("stores", {"סופרמרקט מרכזי": []})
-if 'active_store' not in st.session_state: st.session_state.active_store = saved_data.get("active_store", "סופרמרקט מרכזי")
-if 'next_trip_list' not in st.session_state: st.session_state.next_trip_list = saved_data.get("next_trip_list", [])
-if 'purchase_history' not in st.session_state: st.session_state.purchase_history = saved_data.get("purchase_history", [])
-if 'recurring_items' not in st.session_state: st.session_state.recurring_items = saved_data.get("recurring_items", [])
-if 'learned_categories' not in st.session_state: st.session_state.learned_categories = saved_data.get("learned_categories", {})
-if 'all_purchased_items' not in st.session_state: st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
-if 'budget' not in st.session_state: st.session_state.budget = saved_data.get("budget", 300.0)
+# טעינת נתונים פעם אחת לתוך ה-Session State
+if 'data_loaded' not in st.session_state:
+    saved_data = load_data()
+    st.session_state.stores = saved_data.get("stores", {"סופרמרקט מרכזי": []})
+    st.session_state.active_store = saved_data.get("active_store", "סופרמרקט מרכזי")
+    st.session_state.next_trip_list = saved_data.get("next_trip_list", [])
+    st.session_state.purchase_history = saved_data.get("purchase_history", [])
+    st.session_state.recurring_items = saved_data.get("recurring_items", [])
+    st.session_state.learned_categories = saved_data.get("learned_categories", {})
+    st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
+    st.session_state.budget = saved_data.get("budget", 300.0)
+    st.session_state.data_loaded = True
 
 if st.session_state.active_store not in st.session_state.stores:
     st.session_state.stores[st.session_state.active_store] = []
+
+current_shopping_list = st.session_state.stores[st.session_state.active_store]
 
 # --- עיצוב דינמי ---
 st.markdown("""
@@ -185,8 +187,6 @@ def ai_smart_categorize_and_price(item_name):
         except Exception:
             pass
     return "שונות", 12.0
-
-current_shopping_list = st.session_state.stores[st.session_state.active_store]
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "🛒 רשימה", "➕ הוספה", "⭐ מועדפים", "🗺️ סידור", "🧮 השוואה", "🛍️ לקנייה הבאה", "📊 קבלות", "🏪 חנויות"
@@ -251,12 +251,27 @@ with tab1:
 
 with tab2:
     st.subheader("➕ הוספת פריט")
+    
+    if st.session_state.get('last_added'):
+        st.success(f"✅ הפריט '{st.session_state.last_added}' נוסף בהצלחה ונשמר ב-GitHub!")
+        time.sleep(1.5)
+        st.session_state.pop('last_added', None)
+        st.rerun()
+
     with st.form("add_form"):
         item_name = st.text_input("שם הפריט:")
         if st.form_submit_button("הוסף לרשימה 🛒", type="primary") and item_name.strip():
             cat, price = ai_smart_categorize_and_price(item_name)
-            current_shopping_list.append({"name": item_name.strip(), "quantity": 1, "category": cat, "estimated_price": price, "checked": False})
-            save_data(); st.success("נוסף בהצלחה!"); st.rerun()
+            current_shopping_list.append({
+                "name": item_name.strip(), 
+                "quantity": 1, 
+                "category": cat, 
+                "estimated_price": price, 
+                "checked": False
+            })
+            save_data()
+            st.session_state.last_added = item_name.strip()
+            st.rerun()
 
 with tab3:
     st.subheader("⭐ מועדפים")
