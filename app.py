@@ -15,8 +15,8 @@ st.set_page_config(page_title="ניהול קניות אולטימטיבי", page
 # הגדרות GitHub (משולבות באופן אוטומטי)
 # ==========================================
 GITHUB_TOKEN = "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"
-REPO_OWNER = "orenamram-arch"  # שם המשתמש שלך לפי כתובת המאגר הקודמת
-REPO_NAME = "mrp_checking"     # שם המאגר שבו אתה משתמש כרגע
+REPO_OWNER = "orenamram-arch"
+REPO_NAME = "mrp_checking"
 FILE_PATH = "shopping_data.json"
 
 CATEGORIES = ["ירקות ופירות", "מוצרי חלב", "בשר ודגים", "מאפים", "חומרי ניקוי", "חטיפים וממתקים", "שימורים ויבשים", "שונות"]
@@ -89,7 +89,6 @@ def save_data():
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     
     try:
-        # בדיקת SHA של הקובץ הקיים (נדרש ע"י GitHub לעדכון קבצים)
         get_resp = requests.get(url, headers=headers)
         sha = get_resp.json().get('sha') if get_resp.status_code == 200 else None
         
@@ -103,9 +102,15 @@ def save_data():
         if sha:
             payload["sha"] = sha
             
-        requests.put(url, headers=headers, json=payload)
+        put_resp = requests.put(url, headers=headers, json=payload)
+        
+        if put_resp.status_code in [200, 201]:
+            st.toast("✅ הנתונים נשמרו בהצלחה ב-GitHub!", icon="🚀")
+        else:
+            st.error(f"שגיאה בשמירה ל-GitHub (קוד {put_resp.status_code}): {put_resp.text}")
+            
     except Exception as e:
-        st.error(f"שגיאה בשמירה ל-GitHub: {e}")
+        st.error(f"שגיאה קריטית בשמירה ל-GitHub: {e}")
 
 # הגדרת ה-AI (Gemini)
 try:
