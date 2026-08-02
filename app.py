@@ -2,14 +2,12 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import json
-import time
-import urllib.parse
 import base64
 import requests
 import google.generativeai as genai
 
 # הגדרת עמוד האפליקציה (חייב להיות ראשון)
-st.set_page_config(page_title="ניהול קניות אולטימטיבי", page_icon="🛒", layout="centered")
+st.set_page_config(page_title="ניהול קניות משפחתי", page_icon="🛒", layout="centered")
 
 # ==========================================
 # הגדרות GitHub
@@ -30,47 +28,27 @@ FAVOURITES_DB = [
 ]
 
 AISLE_ORDER = {
-    "ירקות ופירות": 1,
-    "מאפים": 2,
-    "מוצרי חלב": 3,
-    "בשר ודגים": 4,
-    "שימורים ויבשים": 5,
-    "חטיפים וממתקים": 6,
-    "חומרי ניקוי": 7,
-    "שונות": 8
+    "ירקות ופירות": 1, "מאפים": 2, "מוצרי חלב": 3, "בשר ודגים": 4,
+    "שימורים ויבשים": 5, "חטיפים וממתקים": 6, "חומרי ניקוי": 7, "שונות": 8
 }
 
 # ----------------------------------------------------
-# פונקציות טעינה ושמירה מאובטחות מול GitHub
+# פונקציות סנכרון מול GitHub
 # ----------------------------------------------------
-def load_data():
+def fetch_from_github():
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             file_info = response.json()
             file_content = base64.b64decode(file_info['content']).decode('utf-8')
-            data = json.loads(file_content)
-            if "stores" in data and data["stores"]:
-                return data
-    except Exception as e:
-        print(f"Error loading from GitHub: {e}")
+            return json.loads(file_content)
+    except Exception:
+        pass
+    return None
 
-    # ברירת מחדל רק אם אין כלום בענן
-    return {
-        "stores": {"סופרמרקט מרכזי": []},
-        "active_store": "סופרמרקט מרכזי",
-        "next_trip_list": [],
-        "purchase_history": [],
-        "recurring_items": [],
-        "learned_categories": {},
-        "all_purchased_items": [],
-        "budget": 300.0
-    }
-
-def save_data():
+def save_to_github():
     data = {
         "stores": st.session_state.stores,
         "active_store": st.session_state.active_store,
@@ -84,30 +62,22 @@ def save_data():
     
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    
     try:
         get_resp = requests.get(url, headers=headers)
         sha = get_resp.json().get('sha') if get_resp.status_code == 200 else None
-        
         json_str = json.dumps(data, ensure_ascii=False, indent=4)
         encoded_content = base64.b64encode(json_str.encode('utf-8')).decode('utf-8')
         
-        payload = {
-            "message": "Auto-update shopping list data",
-            "content": encoded_content,
-        }
-        if sha:
-            payload["sha"] = sha
-            
-        put_resp = requests.put(url, headers=headers, json=payload)
+        payload = {"message": "Sync shopping data", "content": encoded_content}
+        if sha: payload["sha"] = sha
         
+        put_resp = requests.put(url, headers=headers, json=payload)
         if put_resp.status_code in [200, 201]:
-            st.toast("✅ נשמר בהצלחה בענן של GitHub!", icon="🚀")
+            st.toast("✅ הנתונים סונכרנו ונשמרו בענן בהצלחה!", icon="☁️")
         else:
-            st.error(f"שגיאה בשמירה ל-GitHub (קוד {put_resp.status_code}): {put_resp.text}")
-            
+            st.error(f"שגיאת סנכרון מול הענן: {put_resp.text}")
     except Exception as e:
-        st.error(f"שגיאה קריטית בשמירה ל-GitHub: {e}")
+        st.error(f"שגיאת תקשורת מול GitHub: {e}")
 
 # הגדרת ה-AI (Gemini)
 try:
@@ -119,17 +89,29 @@ try:
 except:
     AI_AVAILABLE = False
 
-# טעינת נתונים פעם אחת לתוך ה-Session State
+# טעינה ראשונית לעבודה מול זיכרון המערכת
 if 'data_loaded' not in st.session_state:
-    saved_data = load_data()
-    st.session_state.stores = saved_data.get("stores", {"סופרמרקט מרכזי": []})
-    st.session_state.active_store = saved_data.get("active_store", "סופרמרקט מרכזי")
-    st.session_state.next_trip_list = saved_data.get("next_trip_list", [])
-    st.session_state.purchase_history = saved_data.get("purchase_history", [])
-    st.session_state.recurring_items = saved_data.get("recurring_items", [])
-    st.session_state.learned_categories = saved_data.get("learned_categories", {})
-    st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
-    st.session_state.budget = saved_data.get("budget", 300.0)
+    cloud_data = fetch_from_github()
+    if not cloud_data or not cloud_data.get("stores"):
+        cloud_data = {
+            "stores": {"סופרמרקט מרכזי": []},
+            "active_store": "סופרמרקט מרכזי",
+            "next_trip_list": [],
+            "purchase_history": [],
+            "recurring_items": [],
+            "learned_categories": {},
+            "all_purchased_items": [],
+            "budget": 300.0
+        }
+
+    st.session_state.stores = cloud_data.get("stores", {"סופרמרקט מרכזי": []})
+    st.session_state.active_store = cloud_data.get("active_store", "סופרמרקט מרכזי")
+    st.session_state.next_trip_list = cloud_data.get("next_trip_list", [])
+    st.session_state.purchase_history = cloud_data.get("purchase_history", [])
+    st.session_state.recurring_items = cloud_data.get("recurring_items", [])
+    st.session_state.learned_categories = cloud_data.get("learned_categories", {})
+    st.session_state.all_purchased_items = cloud_data.get("all_purchased_items", [])
+    st.session_state.budget = cloud_data.get("budget", 300.0)
     st.session_state.data_loaded = True
 
 if st.session_state.active_store not in st.session_state.stores:
@@ -193,11 +175,30 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 ])
 
 with tab1:
-    store_list = list(st.session_state.stores.keys())
-    selected_store = st.selectbox("🏪 חנות פעילה כרגע:", store_list, index=store_list.index(st.session_state.active_store))
-    if selected_store != st.session_state.active_store:
-        st.session_state.active_store = selected_store
-        save_data(); st.rerun()
+    # כפתור סנכרון ידני מהיר בראש הרשימה
+    c_store, c_sync = st.columns([3, 1.3])
+    with c_store:
+        store_list = list(st.session_state.stores.keys())
+        selected_store = st.selectbox("🏪 חנות פעילה כרגע:", store_list, index=store_list.index(st.session_state.active_store), label_visibility="collapsed")
+        if selected_store != st.session_state.active_store:
+            st.session_state.active_store = selected_store
+            save_to_github(); st.rerun()
+    with c_sync:
+        if st.button("🔄 סנכרן ענן", use_container_width=True):
+            cloud_data = fetch_from_github()
+            if cloud_data and cloud_data.get("stores"):
+                st.session_state.stores = cloud_data.get("stores")
+                st.session_state.active_store = cloud_data.get("active_store", list(st.session_state.stores.keys())[0])
+                st.session_state.next_trip_list = cloud_data.get("next_trip_list", [])
+                st.session_state.purchase_history = cloud_data.get("purchase_history", [])
+                st.session_state.recurring_items = cloud_data.get("recurring_items", [])
+                st.session_state.learned_categories = cloud_data.get("learned_categories", {})
+                st.session_state.all_purchased_items = cloud_data.get("all_purchased_items", [])
+                st.session_state.budget = cloud_data.get("budget", 300.0)
+                st.success("הנתונים עודכנו מהענן!")
+                st.rerun()
+            else:
+                st.warning("לא נמצאו נתונים בענן")
 
     st.markdown("---")
     total_cost = sum(item['quantity'] * item['estimated_price'] for item in current_shopping_list if not item['checked'])
@@ -226,19 +227,19 @@ with tab1:
                 with c_buy:
                     if st.button("✔️ נקנה", key=f"buy_{idx}", type="primary"):
                         current_shopping_list[idx]['checked'] = True
-                        save_data(); st.rerun()
+                        save_to_github(); st.rerun()
                 with c_minus:
                     if st.button("➖", key=f"minus_{idx}") and item['quantity'] > 1:
                         current_shopping_list[idx]['quantity'] -= 1
-                        save_data(); st.rerun()
+                        save_to_github(); st.rerun()
                 with c_plus:
                     if st.button("➕", key=f"plus_{idx}"):
                         current_shopping_list[idx]['quantity'] += 1
-                        save_data(); st.rerun()
+                        save_to_github(); st.rerun()
                 with c_del:
                     if st.button("🗑️ מחק", key=f"del_{idx}"):
                         current_shopping_list.pop(idx)
-                        save_data(); st.rerun()
+                        save_to_github(); st.rerun()
 
         checked_items = [i for i in current_shopping_list if i['checked']]
         if checked_items:
@@ -247,17 +248,10 @@ with tab1:
                 trip_total = sum(i['quantity'] * i['estimated_price'] for i in checked_items)
                 st.session_state.purchase_history.append({"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "store": st.session_state.active_store, "total_cost": trip_total})
                 st.session_state.stores[st.session_state.active_store] = [i for i in current_shopping_list if not i['checked']]
-                save_data(); st.rerun()
+                save_to_github(); st.rerun()
 
 with tab2:
     st.subheader("➕ הוספת פריט")
-    
-    if st.session_state.get('last_added'):
-        st.success(f"✅ הפריט '{st.session_state.last_added}' נוסף בהצלחה ונשמר ב-GitHub!")
-        time.sleep(1.5)
-        st.session_state.pop('last_added', None)
-        st.rerun()
-
     with st.form("add_form"):
         item_name = st.text_input("שם הפריט:")
         if st.form_submit_button("הוסף לרשימה 🛒", type="primary") and item_name.strip():
@@ -269,8 +263,8 @@ with tab2:
                 "estimated_price": price, 
                 "checked": False
             })
-            save_data()
-            st.session_state.last_added = item_name.strip()
+            save_to_github()
+            st.success("נוסף ונשמר בענן בהצלחה!")
             st.rerun()
 
 with tab3:
@@ -278,7 +272,7 @@ with tab3:
     for idx, fav in enumerate(FAVOURITES_DB):
         if st.button(f"➕ {fav['name']} (₪{fav['estimated_price']})", key=f"fav_{idx}"):
             current_shopping_list.append({"name": fav['name'], "quantity": 1, "category": fav['category'], "estimated_price": fav['estimated_price'], "checked": False})
-            save_data(); st.success("נוסף!"); st.rerun()
+            save_to_github(); st.success("נוסף!"); st.rerun()
 
 with tab4:
     st.subheader("🗺️ מסלול הליכה בסופר")
@@ -302,7 +296,7 @@ with tab7:
     st.subheader("📊 תקציב והיסטוריה")
     new_budget = st.number_input("תקציב מקסימלי (₪):", value=float(st.session_state.budget))
     if new_budget != st.session_state.budget:
-        st.session_state.budget = new_budget; save_data()
+        st.session_state.budget = new_budget; save_to_github()
     if st.session_state.purchase_history:
         st.dataframe(pd.DataFrame(st.session_state.purchase_history), use_container_width=True)
 
@@ -312,4 +306,4 @@ with tab8:
     if st.button("צור חנות ✅") and new_store.strip():
         st.session_state.stores[new_store.strip()] = []
         st.session_state.active_store = new_store.strip()
-        save_data(); st.rerun()
+        save_to_github(); st.rerun()
