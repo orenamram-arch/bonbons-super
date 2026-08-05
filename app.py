@@ -44,6 +44,9 @@ AISLE_ORDER = {
     "שונות": 8
 }
 
+# כמה פעמים פריט צריך להופיע כ"חסר" לפני שנציע להוסיף אותו למועדפים
+MISSING_ITEM_SUGGESTION_THRESHOLD = 3
+
 # הגדרת ה-AI (Gemini)
 try:
     if "GEMINI_API_KEY" in st.secrets:
@@ -53,6 +56,17 @@ try:
         AI_AVAILABLE = False
 except:
     AI_AVAILABLE = False
+
+
+@st.cache_resource
+def get_gemini_model():
+    """טוען את מודל ה-AI פעם אחת בלבד ושומר אותו בקאש, כדי לחסוך זמן טעינה בכל קריאה."""
+    if AI_AVAILABLE:
+        try:
+            return genai.GenerativeModel('gemini-1.5-flash')
+        except Exception:
+            return None
+    return None
 
 
 def load_data():
@@ -77,7 +91,9 @@ def load_data():
         "recurring_items": [],
         "learned_categories": {},
         "all_purchased_items": [],
-        "budget": 300.0
+        "budget": 300.0,
+        "personal_favourites": [],
+        "missing_item_counts": {}
     }
 
 
@@ -90,7 +106,9 @@ def save_data():
         "recurring_items": st.session_state.recurring_items,
         "learned_categories": st.session_state.learned_categories,
         "all_purchased_items": st.session_state.all_purchased_items,
-        "budget": st.session_state.budget
+        "budget": st.session_state.budget,
+        "personal_favourites": st.session_state.personal_favourites,
+        "missing_item_counts": st.session_state.missing_item_counts
     }
     try:
         supabase.table("app_data").upsert(
@@ -98,8 +116,15 @@ def save_data():
             on_conflict="key"
         ).execute()
         st.toast("💾 נשמר בהצלחה בענן Supabase!", icon="✅")
+        # שמירה הצליחה - מנקים גיבוי חירום קודם אם היה קיים
+        st.session_state.last_save_failed_backup = None
     except Exception as e:
         st.error(f"שגיאה בשמירת הנתונים ב-Supabase: {e}")
+        # שומרים גיבוי חירום בזיכרון הסשן כדי שהמשתמש יוכל להוריד את הנתונים ולא לאבד אותם
+        try:
+            st.session_state.last_save_failed_backup = json.dumps(data, ensure_ascii=False, indent=4)
+        except Exception:
+            pass
 
 
 saved_data = load_data()
@@ -111,6 +136,9 @@ if 'recurring_items' not in st.session_state: st.session_state.recurring_items =
 if 'learned_categories' not in st.session_state: st.session_state.learned_categories = saved_data.get("learned_categories", {})
 if 'all_purchased_items' not in st.session_state: st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
 if 'budget' not in st.session_state: st.session_state.budget = saved_data.get("budget", 300.0)
+if 'personal_favourites' not in st.session_state: st.session_state.personal_favourites = saved_data.get("personal_favourites", [])
+if 'missing_item_counts' not in st.session_state: st.session_state.missing_item_counts = saved_data.get("missing_item_counts", {})
+if 'last_save_failed_backup' not in st.session_state: st.session_state.last_save_failed_backup = None
 
 if st.session_state.active_store not in st.session_state.stores:
     st.session_state.stores[st.session_state.active_store] = []
@@ -181,6 +209,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- גיבוי חירום גלובלי: אם השמירה האחרונה נכשלה, מציגים אזהרה עם אפשרות הורדה מיידית ---
+if st.session_state.last_save_failed_backup:
+    st.warning("⚠️ השמירה האחרונה בענן נכשלה! מומלץ להוריד גיבוי חירום כדי לא לאבד נתונים.")
+    st.download_button(
+        label="📥 הורד גיבוי חירום עכשיו",
+        data=st.session_state.last_save_failed_backup,
+        file_name=f"emergency_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        mime="application/json",
+        key="emergency_backup_download"
+    )
+
 
 def get_product_icon_and_color(category):
     if category == "ירקות ופירות": return "🥗", "#10b981"
@@ -199,9 +238,9 @@ def ai_smart_categorize_and_price(item_name):
     if clean_name in st.session_state.learned_categories:
         return st.session_state.learned_categories[clean_name], 12.0
 
-    if AI_AVAILABLE:
+    model = get_gemini_model()
+    if model is not None:
         try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
             prompt = (
                 f"You are a smart shopping assistant. Categorize the shopping item "
                 f"'{clean_name}' into EXACTLY ONE of these categories: "
@@ -296,11 +335,17 @@ with tab1:
         active_items = [i for i in current_shopping_list if not i['checked']]
         categories_in_list = sorted(list(set(i['category'] for i in active_items)))
 
-        selected_category_filter = st.selectbox("📂 סינון מחלקה:", ["הכל (ללא סינון)"] + categories_in_list)
+        col_search, col_cat = st.columns([1.4, 1])
+        with col_search:
+            search_query = st.text_input("🔎 חיפוש פריט ברשימה:", value="", placeholder="הקלד שם פריט...")
+        with col_cat:
+            selected_category_filter = st.selectbox("📂 סינון מחלקה:", ["הכל (ללא סינון)"] + categories_in_list)
 
         for idx, item in enumerate(current_shopping_list):
             if not item['checked']:
                 if selected_category_filter != "הכל (ללא סינון)" and item['category'] != selected_category_filter:
+                    continue
+                if search_query.strip() and search_query.strip().lower() not in item['name'].lower():
                     continue
 
                 icon, card_color = get_product_icon_and_color(item['category'])
@@ -340,13 +385,29 @@ with tab1:
                     with col_mis:
                         if st.button("❌ חסר", key=f"missing_{idx}"):
                             st.session_state.next_trip_list.append(item)
+                            # מעקב כמה פעמים הפריט הזה מסומן כחסר - לצורך הצעת הוספה למועדפים
+                            name_key = item['name'].strip().lower()
+                            st.session_state.missing_item_counts[name_key] = st.session_state.missing_item_counts.get(name_key, 0) + 1
                             current_shopping_list.pop(idx)
                             save_data()
                             st.rerun()
                     with col_del:
-                        if st.button("🗑️ מחק", key=f"delete_{idx}"):
-                            current_shopping_list.pop(idx)
-                            save_data()
+                        if st.session_state.get(f"confirm_delete_{idx}", False):
+                            if st.button("⚠️ למחוק?", key=f"delete_confirm_{idx}"):
+                                current_shopping_list.pop(idx)
+                                st.session_state.pop(f"confirm_delete_{idx}", None)
+                                save_data()
+                                st.rerun()
+                        else:
+                            if st.button("🗑️ מחק", key=f"delete_{idx}"):
+                                st.session_state[f"confirm_delete_{idx}"] = True
+                                st.rerun()
+
+                if st.session_state.get(f"confirm_delete_{idx}", False):
+                    col_cancel_del, _ = st.columns([1, 3])
+                    with col_cancel_del:
+                        if st.button("✖️ ביטול מחיקה", key=f"cancel_delete_{idx}"):
+                            st.session_state.pop(f"confirm_delete_{idx}", None)
                             st.rerun()
 
                 if st.session_state.get(f"show_edit_shop_{idx}", False):
@@ -409,35 +470,54 @@ with tab1:
                             save_data()
                             st.rerun()
 
+            # תוספת: עדכון מחירים בפועל (אופציונלי) לפני סגירת הקנייה
+            actual_prices_map = {}
+            with st.expander("✏️ (אופציונלי) עדכן מחירים בפועל ששולמו, לפני שמירת הקנייה"):
+                st.caption("ברירת המחדל היא המחיר המשוער. שנה רק אם אתה יודע את המחיר בפועל ששילמת.")
+                for idx, item in enumerate(checked_items):
+                    actual_prices_map[idx] = st.number_input(
+                        f"{item['name']} (כמות {item['quantity']}) - מחיר בפועל ליחידה (₪):",
+                        value=float(item['estimated_price']),
+                        min_value=0.0,
+                        key=f"actual_price_input_{idx}_{item['name']}"
+                    )
+
             st.markdown("<br>", unsafe_allow_html=True)
-            
+
             col_end1, col_end2, col_end3 = st.columns(3)
-            
+
             with col_end1:
                 if st.button("🏁 סיים ושמור", type="primary", use_container_width=True):
                     trip_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    trip_total = sum(i['quantity'] * i['estimated_price'] for i in checked_items)
+                    trip_total_estimated = sum(i['quantity'] * i['estimated_price'] for i in checked_items)
+                    trip_total_actual = sum(
+                        i['quantity'] * actual_prices_map.get(idx, i['estimated_price'])
+                        for idx, i in enumerate(checked_items)
+                    )
                     st.session_state.purchase_history.append({
                         "date": trip_date,
                         "store": st.session_state.active_store,
                         "items_count": len(checked_items),
-                        "total_cost": trip_total
+                        "total_cost": trip_total_estimated,
+                        "actual_cost": trip_total_actual
                     })
                     st.session_state.stores[st.session_state.active_store] = [i for i in current_shopping_list if not i['checked']]
                     save_data()
                     st.success("הקנייה נשמרה בהצלחה!")
                     st.rerun()
-                    
+
             with col_end2:
                 if st.button("🧹 מחק מסומנים", use_container_width=True):
                     st.session_state.stores[st.session_state.active_store] = [i for i in current_shopping_list if not i['checked']]
                     save_data()
                     st.rerun()
-                    
+
             with col_end3:
-                if st.button("🗑️ רוקן רשימה", use_container_width=True):
+                confirm_empty = st.checkbox("אשר ריקון", key="confirm_empty_list")
+                if st.button("🗑️ רוקן רשימה", use_container_width=True, disabled=not confirm_empty):
                     st.session_state.stores[st.session_state.active_store] = []
                     save_data()
+                    st.session_state["confirm_empty_list"] = False
                     st.rerun()
 
 # ----------------------------------------------------
@@ -449,9 +529,7 @@ with tab2:
     if st.session_state.get('last_added_item'):
         last = st.session_state.last_added_item
         st.success(f"✅ נוסף בהצלחה: **{last['name']}** (כמות: {last['qty']}) | מחלקה: {last['cat']} | מחיר משוער: ₪{last['price']:.2f}")
-        time.sleep(3)
         st.session_state.pop('last_added_item', None)
-        st.rerun()
 
     with st.form("add_item_form"):
         known_items = sorted(list(set(st.session_state.all_purchased_items)))
@@ -524,6 +602,51 @@ with tab3:
             save_data()
             st.success(f"נוסף בהצלחה: {fav['name']}!")
 
+    st.markdown("---")
+    st.subheader("🌟 המועדפים האישיים שלי")
+    st.caption("מועדפים שאתה בעצמך הוספת - נשמרים בענן ומופיעים כאן לתמיד.")
+
+    if not st.session_state.personal_favourites:
+        st.info("עדיין לא הוספת מועדפים אישיים. אפשר להוסיף למטה, או דרך לשונית 'לקנייה הבאה'.")
+    else:
+        for pidx, pfav in enumerate(st.session_state.personal_favourites):
+            col_pf, col_pf_add, col_pf_del = st.columns([2.4, 1, 1])
+            col_pf.write(f"**{pfav['name']}** (₪{pfav['estimated_price']}) | {pfav['category']}")
+            if col_pf_add.button("➕ הוסף", key=f"personal_fav_add_{pidx}"):
+                current_shopping_list.append({
+                    "name": pfav['name'],
+                    "quantity": 1,
+                    "category": pfav['category'],
+                    "estimated_price": pfav['estimated_price'],
+                    "checked": False
+                })
+                if pfav['name'] not in st.session_state.all_purchased_items:
+                    st.session_state.all_purchased_items.append(pfav['name'])
+                save_data()
+                st.success(f"נוסף בהצלחה: {pfav['name']}!")
+            if col_pf_del.button("🗑️ הסר", key=f"personal_fav_del_{pidx}"):
+                st.session_state.personal_favourites.pop(pidx)
+                save_data()
+                st.rerun()
+
+    with st.expander("➕ הוסף מועדף אישי חדש"):
+        with st.form("add_personal_fav_form"):
+            pf_name = st.text_input("שם הפריט:")
+            pf_category = st.selectbox("קטגוריה:", CATEGORIES, key="pf_new_cat")
+            pf_price = st.number_input("מחיר משוער (₪):", min_value=0.0, value=10.0, key="pf_new_price")
+            if st.form_submit_button("שמור כמועדף אישי", type="primary"):
+                if pf_name.strip():
+                    st.session_state.personal_favourites.append({
+                        "name": pf_name.strip(),
+                        "category": pf_category,
+                        "estimated_price": pf_price
+                    })
+                    save_data()
+                    st.success(f"'{pf_name.strip()}' נוסף למועדפים האישיים!")
+                    st.rerun()
+                else:
+                    st.warning("נא להזין שם פריט.")
+
 # ----------------------------------------------------
 # 4. סידור מסלול
 # ----------------------------------------------------
@@ -583,6 +706,22 @@ with tab6:
                 save_data()
                 st.rerun()
 
+            # תוספת: אם פריט חוזר שוב ושוב כ"חסר" - מציעים להוסיף אותו למועדפים האישיים
+            name_key = item['name'].strip().lower()
+            times_missing = st.session_state.missing_item_counts.get(name_key, 0)
+            already_fav = any(pf['name'].strip().lower() == name_key for pf in st.session_state.personal_favourites)
+            if times_missing >= MISSING_ITEM_SUGGESTION_THRESHOLD and not already_fav:
+                st.info(f"💡 שמתם לב? '{item['name']}' חסר לכם כבר {times_missing} פעמים. כדאי להוסיף אותו למועדפים?")
+                if st.button(f"⭐ הוסף את '{item['name']}' למועדפים האישיים", key=f"suggest_fav_{idx}"):
+                    st.session_state.personal_favourites.append({
+                        "name": item['name'],
+                        "category": item['category'],
+                        "estimated_price": item['estimated_price']
+                    })
+                    save_data()
+                    st.success("נוסף למועדפים האישיים!")
+                    st.rerun()
+
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 העבר את כל הפריטים החסרים לסל הפעיל", type="primary"):
             for item in st.session_state.next_trip_list:
@@ -601,8 +740,48 @@ with tab7:
     if new_budget != st.session_state.budget:
         st.session_state.budget = new_budget
         save_data()
+
     if st.session_state.purchase_history:
-        st.dataframe(pd.DataFrame(st.session_state.purchase_history), use_container_width=True)
+        history_df = pd.DataFrame(st.session_state.purchase_history)
+        st.dataframe(history_df, use_container_width=True)
+
+        # תוספת: ייצוא היסטוריית קניות ל-CSV
+        csv_data = history_df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            label="📥 הורד היסטוריית קניות כקובץ CSV",
+            data=csv_data,
+            file_name="purchase_history.csv",
+            mime="text/csv"
+        )
+
+        st.markdown("---")
+        st.subheader("📈 גרף הוצאות")
+
+        cost_column = "total_cost"
+        if "actual_cost" in history_df.columns and history_df["actual_cost"].notna().any():
+            st.caption("הגרף מציג את המחיר בפועל כשקיים, אחרת את המחיר המשוער.")
+            history_df["display_cost"] = history_df["actual_cost"].fillna(history_df["total_cost"])
+            cost_column = "display_cost"
+
+        chart_view = st.radio("הצג הוצאות לפי:", ["חנות", "תאריך קנייה"], horizontal=True)
+
+        if chart_view == "חנות":
+            by_store = history_df.groupby("store")[cost_column].sum()
+            st.bar_chart(by_store)
+        else:
+            by_date = history_df.groupby("date")[cost_column].sum()
+            st.bar_chart(by_date)
+
+        if "actual_cost" in history_df.columns and history_df["actual_cost"].notna().any():
+            avg_estimated = history_df["total_cost"].mean()
+            avg_actual = history_df["actual_cost"].mean()
+            diff = avg_actual - avg_estimated
+            col_avg1, col_avg2, col_avg3 = st.columns(3)
+            col_avg1.metric("ממוצע משוער לקנייה", f"₪{avg_estimated:.2f}")
+            col_avg2.metric("ממוצע בפועל לקנייה", f"₪{avg_actual:.2f}")
+            col_avg3.metric("פער ממוצע", f"₪{diff:.2f}", delta=f"{diff:.2f}")
+    else:
+        st.info("עדיין אין היסטוריית קניות שמורה.")
 
 # ----------------------------------------------------
 # 8. ניהול חנויות והגדרות (כולל גיבוי ושחזור קבצים)
@@ -612,7 +791,7 @@ with tab8:
 
     st.subheader("💾 גיבוי ושחזור נתוני הקניות")
     st.write("כדי לוודא שלעולם לא תאבד את הרשימות, ההיסטוריה והחנויות שלך, תוכל להוריד קובץ גיבוי או לשחזר ממנו:")
-    
+
     backup_data_json = json.dumps({
         "stores": st.session_state.stores,
         "active_store": st.session_state.active_store,
@@ -621,9 +800,11 @@ with tab8:
         "recurring_items": st.session_state.recurring_items,
         "learned_categories": st.session_state.learned_categories,
         "all_purchased_items": st.session_state.all_purchased_items,
-        "budget": st.session_state.budget
+        "budget": st.session_state.budget,
+        "personal_favourites": st.session_state.personal_favourites,
+        "missing_item_counts": st.session_state.missing_item_counts
     }, ensure_ascii=False, indent=4)
-    
+
     st.download_button(
         label="📥 הורד קובץ גיבוי מלא (JSON)",
         data=backup_data_json,
@@ -643,6 +824,8 @@ with tab8:
             st.session_state.learned_categories = restored_data.get("learned_categories", {})
             st.session_state.all_purchased_items = restored_data.get("all_purchased_items", [])
             st.session_state.budget = restored_data.get("budget", 300.0)
+            st.session_state.personal_favourites = restored_data.get("personal_favourites", [])
+            st.session_state.missing_item_counts = restored_data.get("missing_item_counts", {})
             save_data()
             st.success("הנתונים שוחזרו בהצלחה!")
             st.rerun()
@@ -669,14 +852,33 @@ with tab8:
             st.warning("נא להזין שם תקין לחנות.")
 
     st.markdown("---")
+    st.subheader("📋 שכפול רשימה לחנות אחרת")
+    st.caption(f"מעתיק את הפריטים הפעילים (שלא נקנו) מהחנות '{st.session_state.active_store}' לחנות אחרת.")
+    other_stores = [s for s in st.session_state.stores.keys() if s != st.session_state.active_store]
+    if not other_stores:
+        st.info("אין עדיין חנות נוספת להעתיק אליה. צור חנות חדשה למעלה קודם.")
+    else:
+        target_store = st.selectbox("העתק אל חנות:", other_stores, key="duplicate_target_store")
+        if st.button("📋 שכפל רשימה לחנות שנבחרה"):
+            items_to_copy = [dict(i) for i in current_shopping_list if not i['checked']]
+            for i in items_to_copy:
+                i['checked'] = False
+            st.session_state.stores[target_store].extend(items_to_copy)
+            save_data()
+            st.success(f"{len(items_to_copy)} פריטים שוכפלו לחנות '{target_store}'!")
+            st.rerun()
+
+    st.markdown("---")
     st.subheader("🗑️ מחיקת חנות קיימת")
     store_to_delete = st.selectbox("בחר חנות למחיקה:", list(st.session_state.stores.keys()))
-    if st.button("🗑️ מחק חנות זו לצמיתות"):
+    confirm_store_delete = st.checkbox(f"אני מאשר מחיקה סופית של החנות '{store_to_delete}' וכל תוכנה", key="confirm_store_delete")
+    if st.button("🗑️ מחק חנות זו לצמיתות", disabled=not confirm_store_delete):
         if len(st.session_state.stores) > 1:
             del st.session_state.stores[store_to_delete]
             if st.session_state.active_store == store_to_delete:
                 st.session_state.active_store = list(st.session_state.stores.keys())[0]
             save_data()
+            st.session_state["confirm_store_delete"] = False
             st.success("החנות נמחקה!")
             st.rerun()
         else:
