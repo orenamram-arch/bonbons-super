@@ -30,7 +30,7 @@ if 'username' not in st.session_state:
 # המפתח הייחודי של הרשימה ב-Supabase לפי שם המשתמש שהוזן
 LIST_KEY = f"shopping_app_main_data_{st.session_state.username}"
 
-# כפתור התנתקות מהיר בסיידבר או למעלה (אופציונלי)
+# כפתור התנתקות מהיר בסיידבר או למעלה
 _, col_logout = st.columns([4, 1])
 with col_logout:
     if st.button("🚪 החלף רשימה"):
@@ -70,7 +70,6 @@ AISLE_ORDER = {
     "שונות": 8
 }
 
-# כמה פעמים פריט צריך להופיע כ"חסר" לפני שנציע להוסיף אותו למועדפים
 MISSING_ITEM_SUGGESTION_THRESHOLD = 3
 
 # הגדרת ה-AI (Gemini)
@@ -85,7 +84,6 @@ except:
 
 @st.cache_resource
 def get_gemini_model():
-    """טוען את מודל ה-AI פעם אחת בלבד ושומר אותו בקאש, כדי לחסוך זמן טעינה בכל קריאה."""
     if AI_AVAILABLE:
         try:
             return genai.GenerativeModel('gemini-1.5-flash')
@@ -93,9 +91,34 @@ def get_gemini_model():
             return None
     return None
 
+# ==========================================
+# פונקציות שליפת מחירים מרשתות השיווק (Live)
+# ==========================================
+@st.cache_data(ttl=3600)
+def get_live_market_prices():
+    """שולף את טבלת השוואת המחירים המעודכנת מ-Supabase עם קאש לשעה."""
+    try:
+        response = supabase.table("supermarket_prices").select("*").execute()
+        if response.data:
+            return {row["item_name"].strip().lower(): row for row in response.data}
+    except Exception:
+        pass
+    return {}
+
+def get_best_market_price(item_name):
+    """בודק אם יש מחיר מעודכן מהרשתות הגדולות, ומחזיר את הזול ביניהם או ברירת מחדל."""
+    market_prices = get_live_market_prices()
+    clean_name = item_name.strip().lower()
+    if clean_name in market_prices:
+        data = market_prices[clean_name]
+        prices = [p for p in [data.get('rami_levy_price'), data.get('shufersal_price'), data.get('yohananof_price')] if p is not None and p > 0]
+        if prices:
+            return min(prices)
+    return None
+
+
 def load_data():
     try:
-        # פנייה לטבלת app_data עם מפתח ייחודי לאפליקציית הקניות של המשתמש הספציפי
         response = supabase.table("app_data").select("content").eq("key", LIST_KEY).execute()
         if response.data and len(response.data) > 0:
             data = response.data[0]["content"]
@@ -104,19 +127,17 @@ def load_data():
                 data["stores"] = {"סופרמרקט מרכזי": old_list}
                 data["active_store"] = "סופרמרקט מרכזי"
             
-            st.session_state.data_loaded_successfully = True # סימון שהטעינה הצליחה
+            st.session_state.data_loaded_successfully = True
             return data
         else:
-            # אם אין נתונים (משתמש חדש), זה עדיין נחשב לטעינה מוצלחת של מסד ריק
             st.session_state.data_loaded_successfully = True
             
     except Exception as e:
         st.error(f"שגיאה קריטית בטעינת הנתונים מ-Supabase: {e}")
-        st.session_state.data_loaded_successfully = False # סימון כשלון כדי למנוע דריסה!
+        st.session_state.data_loaded_successfully = False
 
-    # החזרת מבנה ברירת מחדל במקרה של שגיאה או משתמש חדש
     return {
-        "stores": {"סופרמרקט מרכזי": []},
+        "stores": {"סופਰמרקט מרכזי": []},
         "active_store": "סופרמרקט מרכזי",
         "next_trip_list": [],
         "purchase_history": [],
@@ -130,7 +151,6 @@ def load_data():
 
 
 def save_data():
-    # הגנת הדריסה: אם הטעינה נכשלה, לא נאפשר לשמור ולדרוס את הענן עם נתונים ריקים
     if not st.session_state.get("data_loaded_successfully", True):
         st.error("⚠️ השמירה נחסמה: הנתונים לא נטענו כראוי מהשרת ולכן שמירה עכשיו תדרוס אותם. אנא רענן את העמוד.")
         return
@@ -162,7 +182,6 @@ def save_data():
             pass
 
 
-# טעינת הנתונים למשתמש רק אם הם עדיין לא קיימים בזיכרון המקומי
 if 'stores' not in st.session_state:
     saved_data = load_data()
     st.session_state.stores = saved_data.get("stores", {"סופרמרקט מרכזי": []})
@@ -246,7 +265,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- גיבוי חירום גלובלי ---
 if st.session_state.last_save_failed_backup:
     st.warning("⚠️ השמירה האחרונה בענן נכשלה! מומלץ להוריד גיבוי חירום כדי לא לאבד נתונים.")
     st.download_button(
@@ -272,7 +290,13 @@ def ai_smart_categorize_and_price(item_name):
     clean_name = item_name.strip().lower()
 
     if clean_name in st.session_state.learned_categories:
-        return st.session_state.learned_categories[clean_name], 12.0
+        cat = st.session_state.learned_categories[clean_name]
+        live_p = get_best_market_price(clean_name)
+        return cat, (live_p if live_p is not None else 12.0)
+
+    # בדיקה האם יש מחיר ב-Live למוצר חדש
+    live_p = get_best_market_price(clean_name)
+    default_price = live_p if live_p is not None else 12.0
 
     model = get_gemini_model()
     if model is not None:
@@ -289,7 +313,7 @@ def ai_smart_categorize_and_price(item_name):
 
             if predicted_category in CATEGORIES:
                 st.session_state.learned_categories[clean_name] = predicted_category
-                return predicted_category, 12.0
+                return predicted_category, default_price
         except Exception:
             pass
 
@@ -317,9 +341,9 @@ def ai_smart_categorize_and_price(item_name):
     }
     for key, (cat, price) in smart_db.items():
         if key in clean_name:
-            return cat, price
+            return cat, (live_p if live_p is not None else price)
 
-    return "שונות", 12.0
+    return "שונות", default_price
 
 current_shopping_list = st.session_state.stores[st.session_state.active_store]
 
@@ -621,13 +645,17 @@ with tab3:
     st.subheader("⭐ הוספה מהירה ממועדפים")
     for idx, fav in enumerate(FAVOURITES_DB):
         col_f, col_btn = st.columns([3, 1])
-        col_f.write(f"**{fav['name']}** (₪{fav['estimated_price']})")
+        # בדיקה האם יש מחיר מעודכן מהרשתות עבור פריט המועדפים הבסיסי
+        live_fav_price = get_best_market_price(fav['name'])
+        display_fav_price = live_fav_price if live_fav_price is not None else fav['estimated_price']
+        
+        col_f.write(f"**{fav['name']}** (₪{display_fav_price})")
         if col_btn.button("➕ הוסף", key=f"fav_{idx}"):
             current_shopping_list.append({
                 "name": fav['name'],
                 "quantity": 1,
                 "category": fav['category'],
-                "estimated_price": fav['estimated_price'],
+                "estimated_price": display_fav_price,
                 "checked": False
             })
             if fav['name'] not in st.session_state.all_purchased_items:
@@ -644,13 +672,16 @@ with tab3:
     else:
         for pidx, pfav in enumerate(st.session_state.personal_favourites):
             col_pf, col_pf_add, col_pf_del = st.columns([2.4, 1, 1])
-            col_pf.write(f"**{pfav['name']}** (₪{pfav['estimated_price']}) | {pfav['category']}")
+            live_pf_price = get_best_market_price(pfav['name'])
+            display_pf_price = live_pf_price if live_pf_price is not None else pfav['estimated_price']
+
+            col_pf.write(f"**{pfav['name']}** (₪{display_pf_price}) | {pfav['category']}")
             if col_pf_add.button("➕ הוסף", key=f"personal_fav_add_{pidx}"):
                 current_shopping_list.append({
                     "name": pfav['name'],
                     "quantity": 1,
                     "category": pfav['category'],
-                    "estimated_price": pfav['estimated_price'],
+                    "estimated_price": display_pf_price,
                     "checked": False
                 })
                 if pfav['name'] not in st.session_state.all_purchased_items:
@@ -692,10 +723,29 @@ with tab4:
         st.write(f"• {icon} **{item['name']}** (מחלקה: {item['category']})")
 
 # ----------------------------------------------------
-# 5. השוואת מחירים
+# 5. השוואת מחירים (מציג גם השוואה חיה מהרשתות אם קיימת ב-DB)
 # ----------------------------------------------------
 with tab5:
-    st.subheader("🧮 השוואת מחירים (מה משתלם יותר?)")
+    st.subheader("🧮 השוואת מחירים בין רשתות (מהטבלה המעודכנת)")
+    
+    market_prices_dict = get_live_market_prices()
+    if market_prices_dict:
+        st.write("מחירים מעודכנים שנשלפו מהרשתות הגדולות:")
+        price_table_data = []
+        for name, data in market_prices_dict.items():
+            price_table_data.append({
+                "שם המוצר": name,
+                "רמי לוי (₪)": data.get('rami_levy_price'),
+                "שופרסל (₪)": data.get('shufersal_price'),
+                "יוחננוף (₪)": data.get('yohananof_price'),
+                "עדכון אחרון": data.get('last_updated')
+            })
+        st.dataframe(pd.DataFrame(price_table_data), use_container_width=True)
+    else:
+        st.info("עדיין לא קיימים נתוני מחירים חיים בטבלת supermarket_prices במסד הנתונים.")
+
+    st.markdown("---")
+    st.subheader("🧮 מחשבון כדאיות אריזות (מה משתלם יותר?)")
     col_a, col_b = st.columns(2)
     with col_a:
         st.write("אריזה א'")
@@ -902,7 +952,7 @@ with tab8:
     st.markdown("---")
     st.subheader("🗑️ מחיקת חנות קיימת")
     store_to_delete = st.selectbox("בחר חנות למחיקה:", list(st.session_state.stores.keys()))
-    confirm_store_delete = st.checkbox(f"אני מאשר מחיקה סופית של החנות '{store_to_delete}' וכל תוכנה", key="confirm_store_delete")
+    confirm_store_delete = st.checkbox(f"אני מאשר מחיקה סופית של החנות '{store_to_delete}' וכל תוכן", key="confirm_store_delete")
     if st.button("🗑️ מחק חנות זו לצמיתות", disabled=not confirm_store_delete):
         if len(st.session_state.stores) > 1:
             del st.session_state.stores[store_to_delete]
