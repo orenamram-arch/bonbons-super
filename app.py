@@ -2,14 +2,40 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import json
-import os
-import time
 import urllib.parse
 import google.generativeai as genai
 from supabase import create_client, Client
 
 # הגדרת עמוד האפליקציה (חייב להיות ראשון)
 st.set_page_config(page_title="ניהול קניות אולטימטיבי", page_icon="🛒", layout="centered")
+
+# ==========================================
+# 1. מערכת התחברות / בחירת רשימה
+# ==========================================
+if 'username' not in st.session_state:
+    st.markdown("<h1 style='text-align: center;'>ברוכים הבאים לאפליקציית הקניות 🛒</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>כדי להתחיל, אנא בחר את שם הרשימה שלך.</p>", unsafe_allow_html=True)
+    
+    with st.form("login_form"):
+        user_input = st.text_input("מזהה רשימה (למשל: oren או amram_family):")
+        submitted = st.form_submit_button("היכנס לרשימה", type="primary")
+        if submitted:
+            if user_input.strip():
+                st.session_state.username = user_input.strip().lower()
+                st.rerun()
+            else:
+                st.warning("אנא הזן מזהה רשימה תקין.")
+    st.stop() # עוצר את המשך ריצת הקוד עד שהמשתמש יתחבר
+
+# המפתח הייחודי של הרשימה ב-Supabase לפי שם המשתמש שהוזן
+LIST_KEY = f"shopping_app_main_data_{st.session_state.username}"
+
+# כפתור התנתקות מהיר בסיידבר או למעלה (אופציונלי)
+_, col_logout = st.columns([4, 1])
+with col_logout:
+    if st.button("🚪 החלף רשימה"):
+        del st.session_state.username
+        st.rerun()
 
 # ==========================================
 # חיבור ל-Supabase בענן
@@ -57,7 +83,6 @@ try:
 except:
     AI_AVAILABLE = False
 
-
 @st.cache_resource
 def get_gemini_model():
     """טוען את מודל ה-AI פעם אחת בלבד ושומר אותו בקאש, כדי לחסוך זמן טעינה בכל קריאה."""
@@ -68,21 +93,28 @@ def get_gemini_model():
             return None
     return None
 
-
 def load_data():
     try:
-        # פנייה לטבלת app_data עם מפתח ייחודי לאפליקציית הקניות
-        response = supabase.table("app_data").select("content").eq("key", "shopping_app_main_data").execute()
+        # פנייה לטבלת app_data עם מפתח ייחודי לאפליקציית הקניות של המשתמש הספציפי
+        response = supabase.table("app_data").select("content").eq("key", LIST_KEY).execute()
         if response.data and len(response.data) > 0:
             data = response.data[0]["content"]
             if "shopping_list" in data and "stores" not in data:
                 old_list = data["shopping_list"]
                 data["stores"] = {"סופרמרקט מרכזי": old_list}
                 data["active_store"] = "סופרמרקט מרכזי"
+            
+            st.session_state.data_loaded_successfully = True # סימון שהטעינה הצליחה
             return data
+        else:
+            # אם אין נתונים (משתמש חדש), זה עדיין נחשב לטעינה מוצלחת של מסד ריק
+            st.session_state.data_loaded_successfully = True
+            
     except Exception as e:
-        st.error(f"שגיאה בטעינת הנתונים מ-Supabase: {e}")
+        st.error(f"שגיאה קריטית בטעינת הנתונים מ-Supabase: {e}")
+        st.session_state.data_loaded_successfully = False # סימון כשלון כדי למנוע דריסה!
 
+    # החזרת מבנה ברירת מחדל במקרה של שגיאה או משתמש חדש
     return {
         "stores": {"סופרמרקט מרכזי": []},
         "active_store": "סופרמרקט מרכזי",
@@ -98,6 +130,11 @@ def load_data():
 
 
 def save_data():
+    # הגנת הדריסה: אם הטעינה נכשלה, לא נאפשר לשמור ולדרוס את הענן עם נתונים ריקים
+    if not st.session_state.get("data_loaded_successfully", True):
+        st.error("⚠️ השמירה נחסמה: הנתונים לא נטענו כראוי מהשרת ולכן שמירה עכשיו תדרוס אותם. אנא רענן את העמוד.")
+        return
+
     data = {
         "stores": st.session_state.stores,
         "active_store": st.session_state.active_store,
@@ -112,33 +149,33 @@ def save_data():
     }
     try:
         supabase.table("app_data").upsert(
-            {"key": "shopping_app_main_data", "content": data},
+            {"key": LIST_KEY, "content": data},
             on_conflict="key"
         ).execute()
         st.toast("💾 נשמר בהצלחה בענן Supabase!", icon="✅")
-        # שמירה הצליחה - מנקים גיבוי חירום קודם אם היה קיים
         st.session_state.last_save_failed_backup = None
     except Exception as e:
         st.error(f"שגיאה בשמירת הנתונים ב-Supabase: {e}")
-        # שומרים גיבוי חירום בזיכרון הסשן כדי שהמשתמש יוכל להוריד את הנתונים ולא לאבד אותם
         try:
             st.session_state.last_save_failed_backup = json.dumps(data, ensure_ascii=False, indent=4)
         except Exception:
             pass
 
 
-saved_data = load_data()
-if 'stores' not in st.session_state: st.session_state.stores = saved_data.get("stores", {"סופרמרקט מרכזי": []})
-if 'active_store' not in st.session_state: st.session_state.active_store = saved_data.get("active_store", "סופרמרקט מרכזי")
-if 'next_trip_list' not in st.session_state: st.session_state.next_trip_list = saved_data.get("next_trip_list", [])
-if 'purchase_history' not in st.session_state: st.session_state.purchase_history = saved_data.get("purchase_history", [])
-if 'recurring_items' not in st.session_state: st.session_state.recurring_items = saved_data.get("recurring_items", [])
-if 'learned_categories' not in st.session_state: st.session_state.learned_categories = saved_data.get("learned_categories", {})
-if 'all_purchased_items' not in st.session_state: st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
-if 'budget' not in st.session_state: st.session_state.budget = saved_data.get("budget", 300.0)
-if 'personal_favourites' not in st.session_state: st.session_state.personal_favourites = saved_data.get("personal_favourites", [])
-if 'missing_item_counts' not in st.session_state: st.session_state.missing_item_counts = saved_data.get("missing_item_counts", {})
-if 'last_save_failed_backup' not in st.session_state: st.session_state.last_save_failed_backup = None
+# טעינת הנתונים למשתמש רק אם הם עדיין לא קיימים בזיכרון המקומי
+if 'stores' not in st.session_state:
+    saved_data = load_data()
+    st.session_state.stores = saved_data.get("stores", {"סופרמרקט מרכזי": []})
+    st.session_state.active_store = saved_data.get("active_store", "סופרמרקט מרכזי")
+    st.session_state.next_trip_list = saved_data.get("next_trip_list", [])
+    st.session_state.purchase_history = saved_data.get("purchase_history", [])
+    st.session_state.recurring_items = saved_data.get("recurring_items", [])
+    st.session_state.learned_categories = saved_data.get("learned_categories", {})
+    st.session_state.all_purchased_items = saved_data.get("all_purchased_items", [])
+    st.session_state.budget = saved_data.get("budget", 300.0)
+    st.session_state.personal_favourites = saved_data.get("personal_favourites", [])
+    st.session_state.missing_item_counts = saved_data.get("missing_item_counts", {})
+    st.session_state.last_save_failed_backup = None
 
 if st.session_state.active_store not in st.session_state.stores:
     st.session_state.stores[st.session_state.active_store] = []
@@ -209,7 +246,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- גיבוי חירום גלובלי: אם השמירה האחרונה נכשלה, מציגים אזהרה עם אפשרות הורדה מיידית ---
+# --- גיבוי חירום גלובלי ---
 if st.session_state.last_save_failed_backup:
     st.warning("⚠️ השמירה האחרונה בענן נכשלה! מומלץ להוריד גיבוי חירום כדי לא לאבד נתונים.")
     st.download_button(
@@ -219,7 +256,6 @@ if st.session_state.last_save_failed_backup:
         mime="application/json",
         key="emergency_backup_download"
     )
-
 
 def get_product_icon_and_color(category):
     if category == "ירקות ופירות": return "🥗", "#10b981"
@@ -284,7 +320,6 @@ def ai_smart_categorize_and_price(item_name):
             return cat, price
 
     return "שונות", 12.0
-
 
 current_shopping_list = st.session_state.stores[st.session_state.active_store]
 
@@ -385,7 +420,6 @@ with tab1:
                     with col_mis:
                         if st.button("❌ חסר", key=f"missing_{idx}"):
                             st.session_state.next_trip_list.append(item)
-                            # מעקב כמה פעמים הפריט הזה מסומן כחסר - לצורך הצעת הוספה למועדפים
                             name_key = item['name'].strip().lower()
                             st.session_state.missing_item_counts[name_key] = st.session_state.missing_item_counts.get(name_key, 0) + 1
                             current_shopping_list.pop(idx)
@@ -416,7 +450,7 @@ with tab1:
                             e_name = st.text_input("שם הפריט:", value=item['name'])
                             e_price = st.number_input("מחיר משוער ליחידה (₪):", value=float(item['estimated_price']))
                             current_cat_index = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 7
-                            e_category = st.selectbox("תקן קטגוריה (המערכת תלמד ותשמור לפעמים הבאות):", CATEGORIES, index=current_cat_index)
+                            e_category = st.selectbox("תקן קטגוריה:", CATEGORIES, index=current_cat_index)
 
                             if st.form_submit_button("שמור שינויים", type="primary"):
                                 new_name_clean = e_name.strip()
@@ -470,7 +504,6 @@ with tab1:
                             save_data()
                             st.rerun()
 
-            # תוספת: עדכון מחירים בפועל (אופציונלי) לפני סגירת הקנייה
             actual_prices_map = {}
             with st.expander("✏️ (אופציונלי) עדכן מחירים בפועל ששולמו, לפני שמירת הקנייה"):
                 st.caption("ברירת המחדל היא המחיר המשוער. שנה רק אם אתה יודע את המחיר בפועל ששילמת.")
@@ -706,7 +739,6 @@ with tab6:
                 save_data()
                 st.rerun()
 
-            # תוספת: אם פריט חוזר שוב ושוב כ"חסר" - מציעים להוסיף אותו למועדפים האישיים
             name_key = item['name'].strip().lower()
             times_missing = st.session_state.missing_item_counts.get(name_key, 0)
             already_fav = any(pf['name'].strip().lower() == name_key for pf in st.session_state.personal_favourites)
@@ -745,7 +777,6 @@ with tab7:
         history_df = pd.DataFrame(st.session_state.purchase_history)
         st.dataframe(history_df, use_container_width=True)
 
-        # תוספת: ייצוא היסטוריית קניות ל-CSV
         csv_data = history_df.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
             label="📥 הורד היסטוריית קניות כקובץ CSV",
@@ -784,7 +815,7 @@ with tab7:
         st.info("עדיין אין היסטוריית קניות שמורה.")
 
 # ----------------------------------------------------
-# 8. ניהול חנויות והגדרות (כולל גיבוי ושחזור קבצים)
+# 8. ניהול חנויות והגדרות
 # ----------------------------------------------------
 with tab8:
     st.title("🏪 חנויות והגדרות")
