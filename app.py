@@ -27,10 +27,8 @@ if 'username' not in st.session_state:
                 st.warning("אנא הזן מזהה רשימה תקין.")
     st.stop() # עוצר את המשך ריצת הקוד עד שהמשתמש יתחבר
 
-# המפתח הייחודי של הרשימה ב-Supabase לפי שם המשתמש שהוזן
 LIST_KEY = f"shopping_app_main_data_{st.session_state.username}"
 
-# כפתור התנתקות מהיר בסיידבר או למעלה
 _, col_logout = st.columns([4, 1])
 with col_logout:
     if st.button("🚪 החלף רשימה"):
@@ -96,7 +94,7 @@ def get_gemini_model():
 # ==========================================
 @st.cache_data(ttl=3600)
 def get_live_market_prices():
-    """שולף את טבלת השוואת המחירים המעודכנת מ-Supabase עם קאש לשעה."""
+    """שולף את טבלת השוואת המחירים המעודכנת מ-Supabase עם קאש לשעה[cite: 1]."""
     try:
         response = supabase.table("supermarket_prices").select("*").execute()
         if response.data:
@@ -106,7 +104,7 @@ def get_live_market_prices():
     return {}
 
 def get_best_market_price(item_name):
-    """בודק אם יש מחיר מעודכן מהרשתות הגדולות, ומחזיר את הזול ביניהם או ברירת מחדל."""
+    """בודק אם יש מחיר מעודכן מהרשתות הגדולות, ומחזיר את הזול ביניהם או ברירת מחדל[cite: 1]."""
     market_prices = get_live_market_prices()
     clean_name = item_name.strip().lower()
     if clean_name in market_prices:
@@ -137,7 +135,7 @@ def load_data():
         st.session_state.data_loaded_successfully = False
 
     return {
-        "stores": {"סופਰמרקט מרכזי": []},
+        "stores": {"סופרמרקט מרכזי": []},
         "active_store": "סופרמרקט מרכזי",
         "next_trip_list": [],
         "purchase_history": [],
@@ -294,7 +292,6 @@ def ai_smart_categorize_and_price(item_name):
         live_p = get_best_market_price(clean_name)
         return cat, (live_p if live_p is not None else 12.0)
 
-    # בדיקה האם יש מחיר ב-Live למוצר חדש
     live_p = get_best_market_price(clean_name)
     default_price = live_p if live_p is not None else 12.0
 
@@ -400,6 +397,8 @@ with tab1:
         with col_cat:
             selected_category_filter = st.selectbox("📂 סינון מחלקה:", ["הכל (ללא סינון)"] + categories_in_list)
 
+        market_prices_cache = get_live_market_prices()
+
         for idx, item in enumerate(current_shopping_list):
             if not item['checked']:
                 if selected_category_filter != "הכל (ללא סינון)" and item['category'] != selected_category_filter:
@@ -408,6 +407,21 @@ with tab1:
                     continue
 
                 icon, card_color = get_product_icon_and_color(item['category'])
+                
+                # שליפת פירוט מחירים מהרשתות עבור הכרטיס הנוכחי
+                item_clean_name = item['name'].strip().lower()
+                market_info = market_prices_cache.get(item_clean_name)
+                
+                prices_text_parts = []
+                if market_info:
+                    rl = market_info.get('rami_levy_price')
+                    sh = market_info.get('shufersal_price')
+                    yo = market_info.get('yohananof_price')
+                    if rl: prices_text_parts.append(f"רמי לוי: ₪{rl}")
+                    if sh: prices_text_parts.append(f"שופרסל: ₪{sh}")
+                    if yo: prices_text_parts.append(f"יוחננוף: ₪{yo}")
+                
+                market_prices_str = " | ".join(prices_text_parts) if prices_text_parts else "אין נתוני רשתות עדכניים"
 
                 with st.container():
                     st.markdown(f"""
@@ -415,7 +429,8 @@ with tab1:
                         <span style="font-size: 26px; margin-left: 12px;">{icon}</span>
                         <div style="flex-grow: 1;">
                             <span class="product-name">{item['name']}</span> &nbsp;|&nbsp; <b>כמות: {item['quantity']}</b><br>
-                            <span class="product-details">מחיר משוער: <b>₪{item['quantity'] * item['estimated_price']:.2f}</b> &nbsp;&bull;&nbsp; קטגוריה: {item['category']}</span>
+                            <span class="product-details">מחיר משוער: <b>₪{item['quantity'] * item['estimated_price']:.2f}</b> &nbsp;&bull;&nbsp; קטגוריה: {item['category']}</span><br>
+                            <span style="font-size: 11px; color: #0284c7;">🛒 השוואת רשתות: {market_prices_str}</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -645,7 +660,6 @@ with tab3:
     st.subheader("⭐ הוספה מהירה ממועדפים")
     for idx, fav in enumerate(FAVOURITES_DB):
         col_f, col_btn = st.columns([3, 1])
-        # בדיקה האם יש מחיר מעודכן מהרשתות עבור פריט המועדפים הבסיסי
         live_fav_price = get_best_market_price(fav['name'])
         display_fav_price = live_fav_price if live_fav_price is not None else fav['estimated_price']
         
@@ -723,7 +737,7 @@ with tab4:
         st.write(f"• {icon} **{item['name']}** (מחלקה: {item['category']})")
 
 # ----------------------------------------------------
-# 5. השוואת מחירים (מציג גם השוואה חיה מהרשתות אם קיימת ב-DB)
+# 5. השוואת מחירים
 # ----------------------------------------------------
 with tab5:
     st.subheader("🧮 השוואת מחירים בין רשתות (מהטבלה המעודכנת)")
