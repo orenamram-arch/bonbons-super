@@ -39,7 +39,7 @@ with col_logout:
 # חיבור ל-Supabase בענן
 # ==========================================
 SUPABASE_URL = "https://vobzhjutimeowgsjhgyt.supabase.co"
-SUPABASE_KEY = "sb_publishable_OC3UKQ-UdO3ba4yHgvt9RQ_-AZdenBv"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvYnpoanV0aW1lb3dnc2poZ3l0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2ODYzMTcsImV4cCI6MjEwMTI2MjMxN30._mTvY3UeLZhP9FR4un_GMtD2Uay10GYQHqoCN8yDjCk"
 
 @st.cache_resource
 def init_supabase() -> Client:
