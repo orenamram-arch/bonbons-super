@@ -408,9 +408,18 @@ with tab1:
 
                 icon, card_color = get_product_icon_and_color(item['category'])
                 
-                # שליפת פירוט מחירים מהרשתות עבור הכרטיס הנוכחי
+                # שליפת פירוט מחירים מהרשתות עם התאמה חכמה וגמישה
                 item_clean_name = item['name'].strip().lower()
-                market_info = market_prices_cache.get(item_clean_name)
+                market_info = None
+                
+                # חיפוש מדויק תחילה, ואם אין - חיפוש חלק (האם שם הפריט מכיל או מכיל-את)
+                if item_clean_name in market_prices_cache:
+                    market_info = market_prices_cache[item_clean_name]
+                else:
+                    for db_name, db_data in market_prices_cache.items():
+                        if db_name in item_clean_name or item_clean_name in db_name:
+                            market_info = db_data
+                            break
                 
                 prices_text_parts = []
                 if market_info:
