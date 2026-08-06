@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import json
 import urllib.parse
+import urllib.request
 import google.generativeai as genai
 from supabase import create_client, Client
 
@@ -113,6 +114,51 @@ def get_best_market_price(item_name):
         if prices:
             return min(prices)
     return None
+
+
+def get_market_image(item_name):
+    """שולף תמונת מוצר מטבלת supermarket_prices, אם עמודת image_url קיימת ומולאה שם על ידי האוטומציה שלך."""
+    market_prices = get_live_market_prices()
+    clean_name = item_name.strip().lower()
+    if clean_name in market_prices:
+        img = market_prices[clean_name].get('image_url')
+        if img:
+            return img
+    return None
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_auto_image_url(item_name):
+    """מנסה למצוא תמונה אוטומטית לפריט דרך Open Food Facts (מאגר מוצרים חינמי, ללא צורך במפתח API)."""
+    clean_name = item_name.strip()
+    if not clean_name:
+        return None
+    try:
+        query = urllib.parse.quote(clean_name)
+        url = (
+            "https://world.openfoodfacts.org/cgi/search.pl"
+            f"?search_terms={query}&search_simple=1&action=process&json=1"
+            "&page_size=1&fields=image_front_small_url,image_url"
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "ShoppingListApp/1.0 (personal use)"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        products = data.get("products", [])
+        if products:
+            img = products[0].get("image_front_small_url") or products[0].get("image_url")
+            if img:
+                return img
+    except Exception:
+        pass
+    return None
+
+
+def get_item_image(item_name):
+    """מחזיר תמונה לפריט: קודם מהטבלה שלך ב-Supabase (אם קיימת), ואם אין - חיפוש אוטומטי חיצוני."""
+    img = get_market_image(item_name)
+    if img:
+        return img
+    return fetch_auto_image_url(item_name)
 
 
 def load_data():
@@ -432,10 +478,16 @@ with tab1:
                 
                 market_prices_str = " | ".join(prices_text_parts) if prices_text_parts else "אין נתוני רשתות עדכניים"
 
+                item_image_url = item.get('image_url')
+                if item_image_url:
+                    icon_html = f'<img src="{item_image_url}" style="width:44px;height:44px;object-fit:cover;border-radius:10px;margin-left:12px;flex-shrink:0;" onerror="this.style.display=\'none\'" />'
+                else:
+                    icon_html = f'<span style="font-size: 26px; margin-left: 12px;">{icon}</span>'
+
                 with st.container():
                     st.markdown(f"""
                     <div class="product-card" style="border-right: 6px solid {card_color};">
-                        <span style="font-size: 26px; margin-left: 12px;">{icon}</span>
+                        {icon_html}
                         <div style="flex-grow: 1;">
                             <span class="product-name">{item['name']}</span> &nbsp;|&nbsp; <b>כמות: {item['quantity']}</b><br>
                             <span class="product-details">מחיר משוער: <b>₪{item['quantity'] * item['estimated_price']:.2f}</b> &nbsp;&bull;&nbsp; קטגוריה: {item['category']}</span><br>
@@ -499,12 +551,14 @@ with tab1:
                             e_price = st.number_input("מחיר משוער ליחידה (₪):", value=float(item['estimated_price']))
                             current_cat_index = CATEGORIES.index(item['category']) if item['category'] in CATEGORIES else 7
                             e_category = st.selectbox("תקן קטגוריה:", CATEGORIES, index=current_cat_index)
+                            e_image_url = st.text_input("קישור לתמונה (אופציונלי - דורס את מה שנמצא אוטומטית):", value=item.get('image_url') or "")
 
                             if st.form_submit_button("שמור שינויים", type="primary"):
                                 new_name_clean = e_name.strip()
                                 current_shopping_list[idx]['name'] = new_name_clean
                                 current_shopping_list[idx]['estimated_price'] = e_price
                                 current_shopping_list[idx]['category'] = e_category
+                                current_shopping_list[idx]['image_url'] = e_image_url.strip() or get_item_image(new_name_clean)
 
                                 st.session_state.learned_categories[new_name_clean.lower()] = e_category
                                 save_data()
@@ -638,13 +692,15 @@ with tab2:
                     st.warning(f"⚠️ הפריט '{final_name}' כבר קיים ברשימת הקניות הנוכחית!")
                 else:
                     category, price = ai_smart_categorize_and_price(final_name)
+                    image_url = get_item_image(final_name)
 
                     current_shopping_list.append({
                         "name": final_name,
                         "quantity": item_qty,
                         "category": category,
                         "estimated_price": price,
-                        "checked": False
+                        "checked": False,
+                        "image_url": image_url
                     })
 
                     if final_name not in st.session_state.all_purchased_items:
@@ -679,7 +735,8 @@ with tab3:
                 "quantity": 1,
                 "category": fav['category'],
                 "estimated_price": display_fav_price,
-                "checked": False
+                "checked": False,
+                "image_url": get_item_image(fav['name'])
             })
             if fav['name'] not in st.session_state.all_purchased_items:
                 st.session_state.all_purchased_items.append(fav['name'])
@@ -705,7 +762,8 @@ with tab3:
                     "quantity": 1,
                     "category": pfav['category'],
                     "estimated_price": display_pf_price,
-                    "checked": False
+                    "checked": False,
+                    "image_url": get_item_image(pfav['name'])
                 })
                 if pfav['name'] not in st.session_state.all_purchased_items:
                     st.session_state.all_purchased_items.append(pfav['name'])
